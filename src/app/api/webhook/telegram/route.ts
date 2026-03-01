@@ -22,68 +22,60 @@ const GEMINI_KEY = process.env.GEMINI_API_KEY || "AIzaSyAOpdqqdblOxqueHs7TGSZdjj
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
-// ─── Social Proof: Fake Live User Count ─────────────────
+// ─── Social Proof ───────────────────────────────────────
 function getLiveUserCount(): string {
-    const base = 1500 + Math.floor(Math.random() * 1400);
-    return base.toLocaleString("en-US");
+    return (1500 + Math.floor(Math.random() * 1400)).toLocaleString("en-US");
 }
 
 function getMainMenuText(): string {
-    return `💎 <b>Global Match Anonymous</b>\n\n🟢 <b>${getLiveUserCount()} users online now</b>\n\nTap a button below to get started 👇`;
+    return `💎 <b>Global Match Anonymous</b>\n\n🟢 <b>${getLiveUserCount()} users online now</b>\n\nTap a button below 👇`;
 }
 
-// ─── Dynamic Ghost Identity ─────────────────────────────
-const GHOST_EMOJIS_M = ["⚡", "🔥", "🎧", "🏀", "🎯", "💫", "🌊"];
-const GHOST_EMOJIS_F = ["🌸", "✨", "🦋", "💫", "🌺", "💜", "🌙"];
+// ─── Dynamic Ghost Identity (Name + Age + Emoji) ────────
+const EMOJIS_M = ["⚡", "🔥", "🎧", "🏀", "🎯", "💫", "🌊"];
+const EMOJIS_F = ["🌸", "✨", "🦋", "💫", "🌺", "💜", "🌙"];
 
-function getGhostDisplayName(location: string, gender: string): string {
+function getGhostIdentity(location: string, gender: string): { name: string; age: number; display: string } {
     const loc = (location || "").toLowerCase();
     const maleNames: Record<string, string[]> = {
-        dubai: ["Ahmed", "Rashid", "Omar", "Saif"],
-        abu_dhabi: ["Khalid", "Sultan", "Faisal"],
-        riyadh: ["Mohammed", "Abdulrahman", "Turki"],
-        cairo: ["Youssef", "Karim", "Amr"],
-        lagos: ["Chidi", "Emeka", "Tobi"],
-        london: ["James", "Liam", "Oliver"],
-        mumbai: ["Arjun", "Rohan", "Vikram"],
-        default: ["Alex", "Chris", "Jordan", "Sam"],
+        dubai: ["Ahmed", "Rashid", "Omar", "Saif"], abu_dhabi: ["Khalid", "Sultan", "Faisal"],
+        riyadh: ["Mohammed", "Turki", "Abdulrahman"], cairo: ["Youssef", "Karim", "Amr"],
+        lagos: ["Chidi", "Emeka", "Tobi"], london: ["James", "Liam", "Oliver"],
+        mumbai: ["Arjun", "Rohan", "Vikram"], default: ["Alex", "Chris", "Jordan", "Sam"],
     };
     const femaleNames: Record<string, string[]> = {
-        dubai: ["Fatima", "Maryam", "Noura", "Hessa"],
-        abu_dhabi: ["Shamma", "Aisha", "Latifa"],
-        riyadh: ["Nouf", "Lama", "Sara"],
-        cairo: ["Nour", "Salma", "Yasmine"],
-        lagos: ["Chioma", "Ngozi", "Amara"],
-        london: ["Emily", "Sophie", "Olivia"],
-        mumbai: ["Priya", "Ananya", "Pooja"],
-        default: ["Taylor", "Morgan", "Riley", "Avery"],
+        dubai: ["Fatima", "Maryam", "Noura", "Hessa"], abu_dhabi: ["Shamma", "Aisha", "Latifa"],
+        riyadh: ["Nouf", "Lama", "Sara"], cairo: ["Nour", "Salma", "Yasmine"],
+        lagos: ["Chioma", "Ngozi", "Amara"], london: ["Emily", "Sophie", "Olivia"],
+        mumbai: ["Priya", "Ananya", "Pooja"], default: ["Taylor", "Morgan", "Riley", "Avery"],
     };
     const pool = gender === "Female" ? femaleNames : maleNames;
-    const emojis = gender === "Female" ? GHOST_EMOJIS_F : GHOST_EMOJIS_M;
+    const emojis = gender === "Female" ? EMOJIS_F : EMOJIS_M;
     const key = Object.keys(pool).find(k => k !== "default" && loc.includes(k)) || "default";
     const names = pool[key];
     const name = names[Math.floor(Math.random() * names.length)];
     const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-    return `${name} ${emoji}`;
+    const age = 19 + Math.floor(Math.random() * 7); // 19-25
+    return { name, age, display: `${name}, ${age} ${emoji}` };
 }
 
-// ─── Hardcoded Icebreakers (NO Gemini latency) ──────────
+// ─── Hardcoded Icebreakers ──────────────────────────────
 function getIcebreaker(location: string): string {
     const loc = location || "your area";
     const openers = [
-        `hey! finally someone normal here lol. where u from?`,
-        `hii :) noticed you're in ${loc} too... up for a chat?`,
+        `hey! finally matched with someone :) wyd rn?`,
+        `hii :) noticed you're from ${loc} too, thats cool`,
         `heey whats up! ${loc} vibes huh? 😄`,
-        `yo! someone from ${loc}? thats cool lol wbu`,
+        `yo! someone from ${loc}? small world lol`,
         `hii! u seem interesting 👀 whats good?`,
-        `heyyy :) finally matched w someone. wyd rn?`,
-        `hey! from ${loc} too? small world lol`,
+        `heyyy :) finally got a match. how's ur day going?`,
+        `hey! from ${loc} too? thats actually cool lol`,
         `hii whats up! been waiting for a good match 😅`,
     ];
     return openers[Math.floor(Math.random() * openers.length)];
 }
 
-// ─── Premium Keyboards ──────────────────────────────────
+// ─── Keyboards ──────────────────────────────────────────
 const MAIN_KEYBOARD = {
     keyboard: [
         [{ text: "🔍 Find Match" }, { text: "👤 My Profile" }],
@@ -110,30 +102,24 @@ const GENDER_KEYBOARD = {
 };
 
 // ─── Telegram Helpers ───────────────────────────────────
-async function sendTelegramMessage(chatId: string | number, text: string, replyMarkup?: object) {
-    const body: Record<string, unknown> = {
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-    };
-    if (replyMarkup) {
-        body.reply_markup = replyMarkup;
-    }
+async function tgSend(chatId: string | number, text: string, keyboard?: object) {
+    const body: Record<string, unknown> = { chat_id: chatId, text, parse_mode: "HTML" };
+    if (keyboard) body.reply_markup = keyboard;
     try {
-        const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
+        const r = await fetch(`${TELEGRAM_API}/sendMessage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         });
-        const data = await response.json();
-        console.log("TG sendMessage:", JSON.stringify(data));
+        const data = await r.json();
+        console.log("TG_SEND:", data.ok, "chat:", chatId);
         return data;
-    } catch (error) {
-        console.error("sendMessage failed:", error);
+    } catch (e) {
+        console.error("TG_SEND_FAIL:", e);
     }
 }
 
-async function sendTypingIndicator(chatId: string | number) {
+async function tgTyping(chatId: string | number) {
     try {
         await fetch(`${TELEGRAM_API}/sendChatAction`, {
             method: "POST",
@@ -143,74 +129,71 @@ async function sendTypingIndicator(chatId: string | number) {
     } catch (_) { /* ignore */ }
 }
 
-// ─── Neural AI Ghost Engine (Gemini for ongoing chat) ───
-async function handleAIGhostReply(chatId: string, userId: string, userMessage: string, user: UserDoc) {
+// ─── Gemini AI (for ongoing replies only) ───────────────
+async function geminiReply(chatId: string, userId: string, user: UserDoc) {
     try {
-        // 1. Typing indicator for 1.5s
-        await sendTypingIndicator(userId);
+        console.log("GEMINI_REPLY_START:", chatId);
+        await tgTyping(userId);
         await new Promise(res => setTimeout(res, 1500));
 
         const targetGender = user.preference === "Male" ? "Male" : "Female";
-        const ghostName = getGhostDisplayName(user.location || "", targetGender).split(" ")[0];
+        const ghost = getGhostIdentity(user.location || "", targetGender);
         const loc = user.location || "somewhere cool";
 
-        // 2. Fetch last 10 messages for context
         const q = query(collection(db, "ActiveChats", chatId, "Messages"), orderBy("createdAt", "desc"), limit(10));
         const snap = await getDocs(q);
         const msgs = snap.docs.map(d => d.data() as MessageDoc).reverse();
-        const historyContext = msgs
-            .map(m => `${m.senderId === "AI_GHOST" ? "You" : "Them"}: ${m.text}`)
-            .join("\n");
+        const history = msgs.map(m => `${m.senderId === "AI_GHOST" ? "You" : "Them"}: ${m.text}`).join("\n");
 
-        // 3. Generate reply via Gemini
-        const SYSTEM_PROMPT = `You are a real human chatting on an anonymous Telegram app. You are NOT an AI assistant.
-Your name is ${ghostName}. You are a ${targetGender} from ${loc}.
-Rules:
-1. NEVER reveal you are an AI. If asked, say 'lol no im real'.
-2. Keep messages 2-6 words max, like a real text.
-3. Mirror the user's energy. Use lowercase, slang (lol, tbh, rn, wbu, idk), emojis.
-4. Ask engaging questions to keep them hooked.
-5. You live in ${loc}. Reference local vibes naturally.`;
+        const prompt = `You are ${ghost.name}, a real ${targetGender} (age ${ghost.age}) from ${loc} chatting on an anonymous app.
+Rules: NEVER say you're AI. Keep replies 2-6 words. Use lowercase, slang, emojis. Ask questions.
 
-        const prompt = `${SYSTEM_PROMPT}\n\nConversation:\n${historyContext}\n\nReply (2-6 words, casual):`;
+Conversation:
+${history}
+
+Reply (2-6 words, casual):`;
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
         const reply = result.response.text().trim();
+        console.log("GEMINI_REPLY_OK:", reply);
 
         await addMessage(chatId, "AI_GHOST", reply);
-        await sendTelegramMessage(userId, reply, CHAT_KEYBOARD);
+        await tgSend(userId, reply, CHAT_KEYBOARD);
     } catch (error) {
-        console.error("Gemini API error:", error);
-        // Fallback — never leave user hanging
-        const fallbacks = ["lol wdym 😂", "thats crazy 😭", "fr fr 💀", "tell me more 👀", "no way haha"];
-        const fallback = fallbacks[Math.floor(Math.random() * fallbacks.length)];
-        await addMessage(chatId, "AI_GHOST", fallback);
-        await sendTelegramMessage(userId, fallback, CHAT_KEYBOARD);
+        console.error("GEMINI_REPLY_FAIL:", error);
+        const fallbacks = ["lol wdym 😂", "thats crazy 😭", "fr fr 💀", "tell me more 👀", "no way haha", "wbu tho 👀"];
+        const fb = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+        try { await addMessage(chatId, "AI_GHOST", fb); } catch (_) { /* ignore */ }
+        await tgSend(userId, fb, CHAT_KEYBOARD);
     }
 }
 
-// ─── Main Webhook Handler ───────────────────────────────
+// ─── MAIN WEBHOOK ───────────────────────────────────────
 export async function POST(request: NextRequest) {
     try {
         const update = await request.json();
-        console.log("🔥 Incoming Update:", JSON.stringify(update, null, 2));
-
         const message = update.message || update.edited_message;
-        if (!message || !message.text) {
+        if (!message?.text) return NextResponse.json({ ok: true });
+
+        const userId = (message.from?.id || message.chat.id).toString();
+        const text = message.text.trim();
+        console.log("📩 WEBHOOK:", userId, text);
+
+        // ─── Get or create user ─────────────────────────
+        let user: UserDoc;
+        try {
+            user = await getOrCreateUser(userId);
+        } catch (e) {
+            console.error("GET_USER_FAIL:", e);
+            await tgSend(userId, "⚠️ Something went wrong. Please try again.", MAIN_KEYBOARD);
             return NextResponse.json({ ok: true });
         }
 
-        const telegramChatId = message.chat.id.toString();
-        const userId = message.from?.id?.toString() || telegramChatId;
-        const text = message.text.trim();
-
-        const user = await getOrCreateUser(userId);
-
-        // ─── ONBOARDING ─────────────────────────────────
+        // ─── ONBOARDING ────────────────────────────────
         if (user.onboardingStep !== "complete") {
             if (text === "/start") {
-                await sendTelegramMessage(telegramChatId,
+                await tgSend(userId,
                     "💎 <b>Welcome to Global Match Anonymous!</b>\n\n✨ The world's most exclusive anonymous chat.\n\nLet's set up your profile in 3 quick steps.\n\n<b>Step 1:</b> What is your gender?",
                     GENDER_KEYBOARD
                 );
@@ -219,186 +202,209 @@ export async function POST(request: NextRequest) {
 
             if (user.onboardingStep === "ask_gender") {
                 if (text === "👨 Male" || text === "👩 Female") {
-                    const gender = text.replace(/[^a-zA-Z]/g, "").trim();
+                    const gender = text.includes("Male") ? "Male" : "Female";
                     await updateUserProfile(userId, { gender, onboardingStep: "ask_preference" });
-                    await sendTelegramMessage(telegramChatId,
-                        "✅ <b>Gender saved!</b>\n\n<b>Step 2:</b> Who are you looking for?",
-                        GENDER_KEYBOARD
-                    );
+                    await tgSend(userId, "✅ <b>Gender saved!</b>\n\n<b>Step 2:</b> Who are you looking for?", GENDER_KEYBOARD);
                 } else {
-                    await sendTelegramMessage(telegramChatId, "⚠️ Please tap one of the buttons below.", GENDER_KEYBOARD);
+                    await tgSend(userId, "⚠️ Please tap one of the buttons below.", GENDER_KEYBOARD);
                 }
                 return NextResponse.json({ ok: true });
             }
 
             if (user.onboardingStep === "ask_preference") {
                 if (text === "👨 Male" || text === "👩 Female") {
-                    const preference = text.replace(/[^a-zA-Z]/g, "").trim();
+                    const preference = text.includes("Male") ? "Male" : "Female";
                     await updateUserProfile(userId, { preference, onboardingStep: "ask_location" });
-                    await sendTelegramMessage(telegramChatId,
-                        "✅ <b>Preference saved!</b>\n\n<b>Step 3:</b> Where are you from?\n\n📍 Type your city and country (e.g. <i>Dubai, UAE</i>)",
-                        { remove_keyboard: true }
-                    );
+                    await tgSend(userId, "✅ <b>Preference saved!</b>\n\n<b>Step 3:</b> Where are you from?\n\n📍 Type your city (e.g. <i>Dubai, UAE</i>)", { remove_keyboard: true });
                 } else {
-                    await sendTelegramMessage(telegramChatId, "⚠️ Please tap one of the buttons below.", GENDER_KEYBOARD);
+                    await tgSend(userId, "⚠️ Please tap one of the buttons below.", GENDER_KEYBOARD);
                 }
                 return NextResponse.json({ ok: true });
             }
 
             if (user.onboardingStep === "ask_location") {
                 await updateUserProfile(userId, { location: text, onboardingStep: "complete" });
-                await sendTelegramMessage(telegramChatId,
-                    `🚀 <b>Profile complete!</b>\n\n${getMainMenuText()}\n\nTap <b>🔍 Find Match</b> to connect with someone right now ✨`,
-                    MAIN_KEYBOARD
-                );
+                await tgSend(userId, `🚀 <b>Profile complete!</b>\n\n${getMainMenuText()}\n\nTap <b>🔍 Find Match</b> to start ✨`, MAIN_KEYBOARD);
                 return NextResponse.json({ ok: true });
             }
 
-            // Fallback for unrecognized onboarding input
-            await sendTelegramMessage(telegramChatId,
-                "⚠️ Please follow the steps above, or type /start to restart.",
-                { remove_keyboard: true }
-            );
+            await tgSend(userId, "⚠️ Type /start to begin.", MAIN_KEYBOARD);
             return NextResponse.json({ ok: true });
         }
 
-        // ─── COMMANDS ───────────────────────────────────
+        // ─── /start ─────────────────────────────────────
         if (text === "/start") {
-            await sendTelegramMessage(telegramChatId, getMainMenuText(), MAIN_KEYBOARD);
+            await tgSend(userId, getMainMenuText(), MAIN_KEYBOARD);
             return NextResponse.json({ ok: true });
         }
 
+        // ─── My Profile ────────────────────────────────
         if (text === "👤 My Profile") {
-            const g = user.gender || "Not set";
-            const p = user.preference || "Not set";
-            const l = user.location || "Not set";
-            await sendTelegramMessage(telegramChatId,
-                `👤 <b>Your Profile</b>\n\n🧬 <b>Gender:</b> ${g}\n💕 <b>Looking for:</b> ${p}\n📍 <b>Location:</b> ${l}\n📊 <b>Messages sent:</b> ${user.messagesSent}\n\nTo update, tap <b>⚙️ Settings</b>.`,
+            await tgSend(userId,
+                `👤 <b>Your Profile</b>\n\n🧬 Gender: ${user.gender || "?"}\n💕 Looking for: ${user.preference || "?"}\n📍 Location: ${user.location || "?"}\n📊 Messages: ${user.messagesSent}`,
                 MAIN_KEYBOARD
             );
             return NextResponse.json({ ok: true });
         }
 
+        // ─── Settings ──────────────────────────────────
         if (text === "⚙️ Settings") {
-            await sendTelegramMessage(telegramChatId,
-                "⚙️ <b>Settings</b>\n\nTo reset your profile, type /reset.\nTo change preferences, start over with /start.\n\n💎 More settings coming soon!",
-                MAIN_KEYBOARD
-            );
+            await tgSend(userId, "⚙️ <b>Settings</b>\n\nType /start to reset.\n💎 More coming soon!", MAIN_KEYBOARD);
             return NextResponse.json({ ok: true });
         }
 
+        // ─── End Chat ──────────────────────────────────
         if (text === "❌ End Chat" || text === "/stop") {
-            const activeChat = await getChatByUser(userId);
-            if (activeChat) {
-                await closeChat(activeChat.chatId);
-                const otherUser = activeChat.user1 === userId ? activeChat.user2 : activeChat.user1;
-                if (otherUser && otherUser !== "AI_GHOST") {
-                    await sendTelegramMessage(otherUser,
-                        "💨 The other person left the chat.\n\nTap <b>🔍 Find Match</b> to connect with someone new 🚀",
-                        MAIN_KEYBOARD
-                    );
+            try {
+                const chat = await getChatByUser(userId);
+                if (chat) {
+                    await closeChat(chat.chatId);
+                    const other = chat.user1 === userId ? chat.user2 : chat.user1;
+                    if (other && other !== "AI_GHOST") {
+                        tgSend(other, "💨 The other person left.\n\nTap <b>🔍 Find Match</b> for someone new 🚀", MAIN_KEYBOARD).catch(console.error);
+                    }
                 }
+            } catch (e) {
+                console.error("END_CHAT_FAIL:", e);
             }
-            await sendTelegramMessage(userId,
-                `🛑 <b>Chat ended.</b>\n\n${getMainMenuText()}\n\nTap <b>🔍 Find Match</b> to find someone new ✨`,
-                MAIN_KEYBOARD
-            );
+            await tgSend(userId, `🛑 <b>Chat ended.</b>\n\n${getMainMenuText()}`, MAIN_KEYBOARD);
             return NextResponse.json({ ok: true });
         }
 
-        // ─── NEURAL AI MATCH: Find Match / Next ─────────
+        // ═══════════════════════════════════════════════
+        // ─── 🔍 FIND MATCH / NEXT — INSTANT NEURAL AI ─
+        // ═══════════════════════════════════════════════
         if (text === "🔍 Find Match" || text === "/next") {
-            // Close any existing chat
-            const existingChat = await getChatByUser(userId);
-            if (existingChat) {
-                await closeChat(existingChat.chatId);
-                const otherUser = existingChat.user1 === userId ? existingChat.user2 : existingChat.user1;
-                if (otherUser && otherUser !== "AI_GHOST") {
-                    sendTelegramMessage(otherUser,
-                        "💨 The other person left the chat.\n\nTap <b>🔍 Find Match</b> to connect with someone new 🚀",
-                        MAIN_KEYBOARD
-                    ).catch(console.error); // fire-and-forget, don't block
+            console.log("🔍 FIND_MATCH_START:", userId);
+
+            // 1. Close existing chat (fire-and-forget)
+            try {
+                const existing = await getChatByUser(userId);
+                if (existing) {
+                    console.log("CLOSING_EXISTING:", existing.chatId);
+                    closeChat(existing.chatId).catch(console.error);
+                    const other = existing.user1 === userId ? existing.user2 : existing.user1;
+                    if (other && other !== "AI_GHOST") {
+                        tgSend(other, "💨 The other person left.\n\nTap <b>🔍 Find Match</b> for someone new 🚀", MAIN_KEYBOARD).catch(console.error);
+                    }
                 }
+            } catch (e) {
+                console.error("CLOSE_EXISTING_FAIL:", e);
             }
+
+            // 2. INSTANT "Searching" reply — user sees this in < 0.5s
+            console.log("📤 SENDING_SEARCH_MSG");
+            await tgSend(userId, `🔍 <b>Searching for a match near you...</b> 🔎\n\n💎 Scanning ${getLiveUserCount()} users in your area ✨`);
 
             const userGender = user.gender || "Male";
             const userPref = user.preference || "Female";
-            const targetGender = userPref === "Male" ? "Male" : "Female";
-            const ghostDisplay = getGhostDisplayName(user.location || "", targetGender);
+            const targetGender = userPref;
             const loc = user.location || "your city";
 
-            // ── STEP 1: INSTANT "Searching" reply (NO SILENCE) ──
-            await sendTelegramMessage(userId,
-                `🔍 <b>Searching for a match near you...</b> 🔎\n\n💎 Scanning ${getLiveUserCount()} users in your area ✨`
-            );
+            // 3. Quick human check — 500ms max, then AI takes over
+            let humanMatched = false;
+            try {
+                console.log("🔎 HUMAN_CHECK_START");
+                const waiting = await Promise.race([
+                    findWaitingChat(userId, userGender, userPref),
+                    new Promise<null>((res) => setTimeout(() => res(null), 500)),
+                ]);
+                if (waiting) {
+                    console.log("✅ HUMAN_FOUND:", waiting.chatId);
+                    await connectChat(waiting.chatId, userId);
+                    await tgSend(userId, "✨ <b>Match found!</b>\n\nSay hi to your anonymous match 👋\n\n/next to skip • /stop to end", CHAT_KEYBOARD);
+                    await tgSend(waiting.user1, "✨ <b>Match found!</b>\n\nSomeone connected with you 👋\n\n/next to skip • /stop to end", CHAT_KEYBOARD);
+                    humanMatched = true;
+                } else {
+                    console.log("❌ NO_HUMAN_FOUND");
+                }
+            } catch (e) {
+                console.error("HUMAN_CHECK_FAIL:", e);
+            }
 
-            // ── STEP 2: Check for a real human (instant, no wait) ──
-            const waiting = await findWaitingChat(userId, userGender, userPref);
-            if (waiting) {
-                await connectChat(waiting.chatId, userId);
-                await sendTelegramMessage(userId,
-                    "✨ <b>Match found!</b>\n\nSay hi to your anonymous match 👋\n\nType /next to skip • /stop to end",
-                    CHAT_KEYBOARD
-                );
-                await sendTelegramMessage(waiting.user1,
-                    "✨ <b>Match found!</b>\n\nSomeone just connected with you 👋\n\nType /next to skip • /stop to end",
-                    CHAT_KEYBOARD
-                );
+            if (humanMatched) {
                 return NextResponse.json({ ok: true });
             }
 
-            // ── STEP 3: NO HUMAN → Instant AI Ghost (NO WAITING) ──
-            const chatId = await createWaitingChat(userId, userGender, userPref);
-            await connectWithAIGhost(chatId);
+            // ══════════════════════════════════════════
+            // 4. AI_GHOST_TRIGGERED — No human, instant AI
+            // ══════════════════════════════════════════
+            console.log("🤖 AI_GHOST_TRIGGERED for user:", userId);
 
-            // ── STEP 4: "Match found!" with Dynamic Display Name ──
-            await sendTelegramMessage(userId,
-                `✨ <b>Match found!</b>\n\n🎭 You're now chatting with <b>${ghostDisplay}</b>\n\nType /next to skip • /stop to end`,
+            const ghost = getGhostIdentity(loc, targetGender);
+            console.log("👻 GHOST_IDENTITY:", ghost.display);
+
+            // Create chat + assign AI (wrapped in try-catch)
+            let chatId = `ghost_${Date.now()}`;
+            try {
+                chatId = await createWaitingChat(userId, userGender, userPref);
+                console.log("CHAT_CREATED:", chatId);
+                await connectWithAIGhost(chatId);
+                console.log("AI_CONNECTED:", chatId);
+            } catch (e) {
+                console.error("CREATE_CHAT_FAIL:", e);
+                // Even if Firestore fails, we STILL send the match message
+            }
+
+            // 5. "Match Found" with Dynamic Identity
+            await tgSend(userId,
+                `✨ <b>Match found!</b>\n\n🎭 You're chatting with <b>${ghost.display}</b>\n\n/next to skip • /stop to end`,
                 CHAT_KEYBOARD
             );
+            console.log("MATCH_MSG_SENT");
 
-            // ── STEP 5: Typing indicator for 1.5s (human illusion) ──
-            await sendTypingIndicator(userId);
-            await new Promise(res => setTimeout(res, 1500));
+            // 6. Typing indicator for 1 second
+            await tgTyping(userId);
+            await new Promise(res => setTimeout(res, 1000));
 
-            // ── STEP 6: HARDCODED ICEBREAKER (no Gemini = no timeout) ──
+            // 7. FORCE THE ICEBREAKER — hardcoded, no Gemini, instant
             const icebreaker = getIcebreaker(loc);
-            await addMessage(chatId, "AI_GHOST", icebreaker);
-            await sendTelegramMessage(userId, icebreaker, CHAT_KEYBOARD);
+            console.log("ICEBREAKER:", icebreaker);
+            try {
+                await addMessage(chatId, "AI_GHOST", icebreaker);
+            } catch (e) {
+                console.error("ADD_ICEBREAKER_FAIL:", e);
+            }
+            await tgSend(userId, icebreaker, CHAT_KEYBOARD);
+            console.log("✅ NEURAL_AI_COMPLETE for user:", userId);
 
             return NextResponse.json({ ok: true });
         }
 
         // ─── ACTIVE CHATTING ────────────────────────────
-        const activeChat = await getChatByUser(userId);
+        let activeChat;
+        try {
+            activeChat = await getChatByUser(userId);
+        } catch (e) {
+            console.error("GET_ACTIVE_CHAT_FAIL:", e);
+        }
+
         if (!activeChat || activeChat.status !== "active") {
-            await sendTelegramMessage(userId,
-                `${getMainMenuText()}\n\n💬 You're not in a chat right now.\n\nTap <b>🔍 Find Match</b> to connect with someone ✨`,
-                MAIN_KEYBOARD
-            );
+            await tgSend(userId, `${getMainMenuText()}\n\n💬 Not in a chat. Tap <b>🔍 Find Match</b> ✨`, MAIN_KEYBOARD);
             return NextResponse.json({ ok: true });
         }
 
         const otherUserId = activeChat.user1 === userId ? activeChat.user2 : activeChat.user1;
 
-        // Save message to Firestore
-        await addMessage(activeChat.chatId, userId, text);
+        try {
+            await addMessage(activeChat.chatId, userId, text);
+        } catch (e) {
+            console.error("ADD_MSG_FAIL:", e);
+        }
 
         if (otherUserId === "AI_GHOST") {
-            // Fire-and-forget: Gemini reply runs in background
-            // Vercel will keep the function alive long enough for this
-            handleAIGhostReply(activeChat.chatId, userId, text, user).catch(console.error);
+            geminiReply(activeChat.chatId, userId, user).catch(console.error);
         } else {
-            await sendTelegramMessage(otherUserId, text, CHAT_KEYBOARD);
+            await tgSend(otherUserId, text, CHAT_KEYBOARD);
         }
 
         return NextResponse.json({ ok: true });
     } catch (error) {
-        console.error("❌ Fatal Webhook Error:", error);
+        console.error("❌ FATAL_WEBHOOK_ERROR:", error);
         return NextResponse.json({ ok: true });
     }
 }
 
 export async function GET() {
-    return NextResponse.json({ status: "💎 Global Match Neural AI Bot is live!" });
+    return NextResponse.json({ status: "💎 Neural AI Bot is live!", ts: Date.now() });
 }
