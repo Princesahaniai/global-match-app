@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export const runtime = 'edge';
-
 const genAI = new GoogleGenerativeAI("AIzaSyAOpdqqdblOxqueHs7TGSZdjjeN7fLCbNo");
 
 const SYSTEM_PROMPT = `You are pretending to be a real person chatting anonymously on a dating/matching app. 

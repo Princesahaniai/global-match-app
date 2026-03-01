@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = 'edge';
-
 const TELEGRAM_API = `https://api.telegram.org/bot8327734720:AAFHpKHuda3XjXWO8arByW8-w0dMRhENF9Q`;
 
 async function sendTelegramMessage(
@@ -17,11 +15,11 @@ async function sendTelegramMessage(
     if (replyMarkup) {
         body.reply_markup = replyMarkup;
     }
-    fetch(`${TELEGRAM_API}/sendMessage`, {
+    await fetch(`${TELEGRAM_API}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-    }).catch(console.error); // Fire and forget
+    });
 }
 
 export async function POST(request: NextRequest) {
@@ -44,7 +42,7 @@ export async function POST(request: NextRequest) {
                 ? `🌐 <b>Welcome to Global Match Anonymous!</b>\n\nYou were invited by a friend! Tap below to start matching anonymously.`
                 : `🌐 <b>Welcome to Global Match Anonymous!</b>\n\nFind your anonymous match now. Real people. Real conversations. Zero identity.\n\nTap below to begin 👇`;
 
-            sendTelegramMessage(chatId, welcomeText, {
+            await sendTelegramMessage(chatId, welcomeText, {
                 inline_keyboard: [
                     [
                         {
