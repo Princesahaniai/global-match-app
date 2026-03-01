@@ -50,10 +50,13 @@ export async function getOrCreateUser(
         referralCount: 0,
         messagesSent: 0,
         isUnlimited: false,
-        referredBy: referredBy || undefined,
         createdAt: Timestamp.now(),
         onboardingStep: "ask_gender",
     };
+
+    if (referredBy) {
+        newUser.referredBy = referredBy;
+    }
 
     await setDoc(ref, newUser);
 
