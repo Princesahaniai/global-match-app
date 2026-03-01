@@ -293,6 +293,47 @@ function BlurTeaser({ inviteLink }: { inviteLink: string }) {
   );
 }
 
+// ─── Live User Counter (Social Proof) ───────────────────
+
+function LiveUserCounter() {
+  const [count, setCount] = useState(() => 1500 + Math.floor(Math.random() * 1400));
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCount(1500 + Math.floor(Math.random() * 1400));
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div
+      className="glass-card px-6 py-4 mb-10 flex items-center justify-center gap-3"
+      style={{ animation: "fade-in 0.8s ease" }}
+    >
+      <div
+        className="w-3 h-3 rounded-full"
+        style={{
+          background: "#22c55e",
+          boxShadow: "0 0 8px #22c55e, 0 0 16px rgba(34,197,94,0.4)",
+          animation: "pulse 2s ease-in-out infinite",
+        }}
+      />
+      <span
+        className="text-lg font-bold"
+        style={{ color: "var(--accent-cyan)" }}
+      >
+        {count.toLocaleString("en-US")}
+      </span>
+      <span
+        className="text-sm"
+        style={{ color: "var(--text-secondary)" }}
+      >
+        users online now
+      </span>
+    </div>
+  );
+}
+
 // ─── Main App ───────────────────────────────────────────
 
 export default function Home() {
@@ -539,63 +580,8 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Stats */}
-        <div
-          className="glass-card px-6 py-4 mb-10 flex gap-8"
-          style={{ animation: "fade-in 0.8s ease" }}
-        >
-          <div className="text-center">
-            <div
-              className="text-2xl font-bold"
-              style={{ color: "var(--accent-secondary)" }}
-            >
-              {userData?.messagesSent || 0}
-            </div>
-            <div
-              className="text-[10px] uppercase tracking-wider"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Messages
-            </div>
-          </div>
-          <div
-            className="w-px"
-            style={{ background: "var(--glass-border)" }}
-          />
-          <div className="text-center">
-            <div
-              className="text-2xl font-bold"
-              style={{ color: "var(--accent-pink)" }}
-            >
-              {userData?.referralCount || 0}
-            </div>
-            <div
-              className="text-[10px] uppercase tracking-wider"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Referrals
-            </div>
-          </div>
-          <div
-            className="w-px"
-            style={{ background: "var(--glass-border)" }}
-          />
-          <div className="text-center">
-            <div className="text-2xl font-bold">
-              {userData?.isUnlimited ? (
-                <span style={{ color: "var(--accent-cyan)" }}>∞</span>
-              ) : (
-                <span style={{ color: "var(--text-secondary)" }}>15</span>
-              )}
-            </div>
-            <div
-              className="text-[10px] uppercase tracking-wider"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Limit
-            </div>
-          </div>
-        </div>
+        {/* Live Users Social Proof */}
+        <LiveUserCounter />
 
         {/* Find Match Button */}
         <button

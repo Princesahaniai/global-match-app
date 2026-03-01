@@ -17,12 +17,14 @@ import {
 import { db } from "@/lib/firebase";
 import { doc, getDoc, collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 
-const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8327734720:AAFHpKHuda3XjXWO8arByW8-w0dMRhENF9Q";
+const GEMINI_KEY = process.env.GEMINI_API_KEY || "AIzaSyAOpdqqdblOxqueHs7TGSZdjjeN7fLCbNo";
+const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
 // ─── Social Proof: Fake Live User Count ─────────────────
 function getLiveUserCount(): string {
-    const base = 1200 + Math.floor(Math.random() * 1600); // 1,200 – 2,800
+    const base = 1500 + Math.floor(Math.random() * 1400); // 1,500 – 2,900
     return base.toLocaleString("en-US");
 }
 
@@ -339,11 +341,11 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ ok: true });
             }
 
-            // ── STEP 3: Create a waiting room, then wait exactly 3 seconds ──
+            // ── STEP 3: Create a waiting room, then wait exactly 2 seconds ──
             const chatId = await createWaitingChat(userId, userGender, userPref);
 
-            // Simple 3-second wait — no fragile polling loop
-            await new Promise((res) => setTimeout(res, 3000));
+            // Simple 2-second wait — fast handover, no dead air
+            await new Promise((res) => setTimeout(res, 2000));
 
             // ── STEP 4: Check if a real human connected during the wait ──
             const chatSnap = await getDoc(doc(db, "ActiveChats", chatId));
@@ -359,7 +361,7 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ ok: true });
             }
 
-            // ── STEP 5: THE 3-SECOND TRIGGER — Assign AI Ghost ──
+            // ── STEP 5: THE 2-SECOND TRIGGER — Assign AI Ghost ──
             await connectWithAIGhost(chatId);
             await sendTelegramMessage(userId,
                 "✨ <b>Match found!</b>\n\nSay hi to your anonymous match 👋\n\nType /next to skip • /stop to end",
