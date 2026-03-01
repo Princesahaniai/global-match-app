@@ -17,8 +17,18 @@ import {
 import { db } from "@/lib/firebase";
 import { doc, getDoc, collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 
-const TELEGRAM_API = `https://api.telegram.org/bot8327734720:AAFHpKHuda3XjXWO8arByW8-w0dMRhENF9Q`;
-const genAI = new GoogleGenerativeAI("AIzaSyAOpdqqdblOxqueHs7TGSZdjjeN7fLCbNo");
+const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
+// ─── Social Proof: Fake Live User Count ─────────────────
+function getLiveUserCount(): string {
+    const base = 1200 + Math.floor(Math.random() * 1600); // 1,200 – 2,800
+    return base.toLocaleString("en-US");
+}
+
+function getMainMenuText(): string {
+    return `💎 <b>Global Match Anonymous</b>\n\n🟢 <b>${getLiveUserCount()} users online now</b>\n\nTap a button below to get started 👇`;
+}
 
 // ─── Premium Keyboards ──────────────────────────────────
 const MAIN_KEYBOARD = {
@@ -117,7 +127,6 @@ async function handleAIGhostResponse(chatId: string, userId: string, userMessage
         await new Promise(res => setTimeout(res, 2000));
 
         const targetGender = user.preference === "Male" ? "Male" : "Female";
-        const userGender = user.gender === "Male" ? "Male" : "Female";
         const ghostName = getGhostName(user.location || "", targetGender);
         const loc = user.location || "somewhere cool";
 
@@ -143,7 +152,7 @@ Strict Rules:
 
         let prompt: string;
         if (isFirstMessage) {
-            prompt = `${SYSTEM_PROMPT}\n\nThis is the very first message. Say a short, casual opener (2-4 words max, like 'heey :)' or 'hii whats up'):`;
+            prompt = `${SYSTEM_PROMPT}\n\nThis is the very first message. Say a short, casual opener referencing ${loc} (2-4 words max, like 'hey! from ${loc} too? :)' or 'hii whats up'):`;
         } else {
             prompt = `${SYSTEM_PROMPT}\n\nPrevious conversation:\n${historyContext}\n\nReply as yourself (remember: 2-6 words, casual, human-like):`;
         }
@@ -220,17 +229,24 @@ export async function POST(request: NextRequest) {
             if (user.onboardingStep === "ask_location") {
                 await updateUserProfile(userId, { location: text, onboardingStep: "complete" });
                 await sendTelegramMessage(telegramChatId,
-                    "🚀 <b>Profile complete!</b>\n\n💎 You're all set. Your anonymous identity is ready.\n\nTap <b>🔍 Find Match</b> to connect with someone right now ✨",
+                    `🚀 <b>Profile complete!</b>\n\n${getMainMenuText()}\n\nTap <b>🔍 Find Match</b> to connect with someone right now ✨`,
                     MAIN_KEYBOARD
                 );
                 return NextResponse.json({ ok: true });
             }
+
+            // Fallback for unrecognized onboarding input
+            await sendTelegramMessage(telegramChatId,
+                "⚠️ Please follow the steps above, or type /start to restart.",
+                { remove_keyboard: true }
+            );
+            return NextResponse.json({ ok: true });
         }
 
         // ─── COMMANDS ───────────────────────────────────
         if (text === "/start") {
             await sendTelegramMessage(telegramChatId,
-                "💎 <b>Welcome back!</b>\n\nTap <b>🔍 Find Match</b> to start a new anonymous conversation 🥂",
+                getMainMenuText(),
                 MAIN_KEYBOARD
             );
             return NextResponse.json({ ok: true });
@@ -265,7 +281,7 @@ export async function POST(request: NextRequest) {
             if (activeChat) {
                 await closeChat(activeChat.chatId);
                 await sendTelegramMessage(userId,
-                    "🛑 <b>Chat ended.</b>\n\nTap <b>🔍 Find Match</b> to find someone new ✨",
+                    `🛑 <b>Chat ended.</b>\n\n${getMainMenuText()}\n\nTap <b>🔍 Find Match</b> to find someone new ✨`,
                     MAIN_KEYBOARD
                 );
                 const otherUser = activeChat.user1 === userId ? activeChat.user2 : activeChat.user1;
@@ -276,11 +292,15 @@ export async function POST(request: NextRequest) {
                     );
                 }
             } else {
-                await sendTelegramMessage(userId, "You're not in a chat right now.", MAIN_KEYBOARD);
+                await sendTelegramMessage(userId,
+                    `${getMainMenuText()}\n\nYou're not in a chat right now.`,
+                    MAIN_KEYBOARD
+                );
             }
             return NextResponse.json({ ok: true });
         }
 
+        // ─── PHANTOM MATCH: Find Match / Next ───────────
         if (text === "🔍 Find Match" || text === "/next") {
             // Close any existing chat first
             const existingChat = await getChatByUser(userId);
@@ -298,7 +318,13 @@ export async function POST(request: NextRequest) {
             const userGender = user.gender || "Male";
             const userPref = user.preference || "Female";
 
-            // Look for a compatible human
+            // ── STEP 1: Immediate "Searching" message (NO SILENCE) ──
+            await sendTelegramMessage(userId,
+                `🔍 <b>Searching for a match near you...</b> 🔎\n\n💎 Scanning ${getLiveUserCount()} users in your area ✨`,
+                CHAT_KEYBOARD
+            );
+
+            // ── STEP 2: Try to find a real human first ──
             const waiting = await findWaitingChat(userId, userGender, userPref);
             if (waiting) {
                 await connectChat(waiting.chatId, userId);
@@ -313,47 +339,46 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ ok: true });
             }
 
-            // Create waiting chat and poll for 3 seconds
+            // ── STEP 3: Create a waiting room, then wait exactly 3 seconds ──
             const chatId = await createWaitingChat(userId, userGender, userPref);
-            await sendTelegramMessage(userId,
-                "🔍 <b>Searching for your perfect match...</b>\n\n💎 Scanning preferences in your area ✨",
-                CHAT_KEYBOARD
-            );
 
-            const startTime = Date.now();
-            let matched = false;
+            // Simple 3-second wait — no fragile polling loop
+            await new Promise((res) => setTimeout(res, 3000));
 
-            while (Date.now() - startTime < 3000) {
-                await new Promise((res) => setTimeout(res, 1000));
-                const chatSnap = await getDoc(doc(db, "ActiveChats", chatId));
-                const chatData = chatSnap.data();
-                if (chatData && chatData.status === "active") {
-                    matched = true;
-                    break;
-                }
-            }
+            // ── STEP 4: Check if a real human connected during the wait ──
+            const chatSnap = await getDoc(doc(db, "ActiveChats", chatId));
+            const chatData = chatSnap.data();
+            const matched = chatData && chatData.status === "active";
 
-            if (!matched) {
-                // Connect AI Ghost seamlessly
-                await connectWithAIGhost(chatId);
+            if (matched) {
+                // A real human matched — they would have received their own notification
                 await sendTelegramMessage(userId,
                     "✨ <b>Match found!</b>\n\nSay hi to your anonymous match 👋\n\nType /next to skip • /stop to end",
                     CHAT_KEYBOARD
                 );
-
-                // Ghost initiates the first message immediately (no dead air!)
-                // Refresh user data for accuracy
-                const freshUser = await getUser(userId);
-                handleAIGhostResponse(chatId, userId, "", freshUser || user, true).catch(console.error);
+                return NextResponse.json({ ok: true });
             }
+
+            // ── STEP 5: THE 3-SECOND TRIGGER — Assign AI Ghost ──
+            await connectWithAIGhost(chatId);
+            await sendTelegramMessage(userId,
+                "✨ <b>Match found!</b>\n\nSay hi to your anonymous match 👋\n\nType /next to skip • /stop to end",
+                CHAT_KEYBOARD
+            );
+
+            // ── STEP 6: THE ICEBREAKER — Ghost sends first message NOW ──
+            const freshUser = await getUser(userId);
+            await handleAIGhostResponse(chatId, userId, "", freshUser || user, true);
+
             return NextResponse.json({ ok: true });
         }
 
         // ─── ACTIVE CHATTING ────────────────────────────
         const activeChat = await getChatByUser(userId);
         if (!activeChat || activeChat.status !== "active") {
+            // No silence — show the main menu with social proof
             await sendTelegramMessage(userId,
-                "💎 You're not in a chat right now.\n\nTap <b>🔍 Find Match</b> to connect with someone ✨",
+                `${getMainMenuText()}\n\n💬 You're not in a chat right now.\n\nTap <b>🔍 Find Match</b> to connect with someone ✨`,
                 MAIN_KEYBOARD
             );
             return NextResponse.json({ ok: true });
