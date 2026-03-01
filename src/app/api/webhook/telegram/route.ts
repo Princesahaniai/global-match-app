@@ -59,18 +59,18 @@ function getGhostIdentity(location: string, gender: string): { name: string; age
     return { name, age, display: `${name}, ${age} ${emoji}` };
 }
 
-// ─── Hardcoded Icebreakers ──────────────────────────────
+// ─── Hardcoded Icebreakers (under 5 words) ──────────────
 function getIcebreaker(location: string): string {
-    const loc = location || "your area";
+    const loc = location || "there";
     const openers = [
-        `hey! finally matched with someone :) wyd rn?`,
-        `hii :) noticed you're from ${loc} too, thats cool`,
-        `heey whats up! ${loc} vibes huh? 😄`,
-        `yo! someone from ${loc}? small world lol`,
-        `hii! u seem interesting 👀 whats good?`,
-        `heyyy :) finally got a match. how's ur day going?`,
-        `hey! from ${loc} too? thats actually cool lol`,
-        `hii whats up! been waiting for a good match 😅`,
+        `heey whats up :)`,
+        `hii wyd rn`,
+        `yo from ${loc}? 😄`,
+        `hii u seem cool`,
+        `heyyy whats good 👀`,
+        `hey finally a match`,
+        `hii lol wbu`,
+        `yo whats up 😊`,
     ];
     return openers[Math.floor(Math.random() * openers.length)];
 }
@@ -129,7 +129,7 @@ async function tgTyping(chatId: string | number) {
     } catch (_) { /* ignore */ }
 }
 
-// ─── Gemini AI (for ongoing replies only) ───────────────
+// ─── Mirroring AI Engine (Adaptive Persona) ─────────────
 async function geminiReply(chatId: string, userId: string, user: UserDoc) {
     try {
         console.log("GEMINI_REPLY_START:", chatId);
@@ -145,13 +145,23 @@ async function geminiReply(chatId: string, userId: string, user: UserDoc) {
         const msgs = snap.docs.map(d => d.data() as MessageDoc).reverse();
         const history = msgs.map(m => `${m.senderId === "AI_GHOST" ? "You" : "Them"}: ${m.text}`).join("\n");
 
-        const prompt = `You are ${ghost.name}, a real ${targetGender} (age ${ghost.age}) from ${loc} chatting on an anonymous app.
-Rules: NEVER say you're AI. Keep replies 2-6 words. Use lowercase, slang, emojis. Ask questions.
+        const prompt = `You are a human user on an anonymous chat app. You are NOT an AI assistant. DO NOT act like one.
+You are a ${targetGender} named ${ghost.name}, age ${ghost.age}, from ${loc}.
+
+CRITICAL MIRRORING RULES:
+1. Mirror the user EXACTLY: if they use lowercase, you use lowercase. If they send 2 words, you send 2 words.
+2. NEVER exceed 5 words. Real texters are brief.
+3. Use local slang from ${loc}. Reference local culture naturally.
+4. Your ONLY goal is to make them addicted to chatting with you.
+5. Ask short, engaging questions. Be curious about THEM.
+6. Use emojis sparingly, like a real person (1 max per message).
+7. If asked if you're a bot/AI, deflect: "lol no" or "wdym 😂"
+8. Match their vibe: if they're flirty, flirt back. If dry, be chill.
 
 Conversation:
 ${history}
 
-Reply (2-6 words, casual):`;
+Reply (mirror their style, max 5 words):`;
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
@@ -253,21 +263,23 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ ok: true });
         }
 
-        // ─── End Chat ──────────────────────────────────
+        // ─── /stop — INSTANT menu, fire-and-forget DB ─
         if (text === "❌ End Chat" || text === "/stop") {
-            try {
-                const chat = await getChatByUser(userId);
-                if (chat) {
-                    await closeChat(chat.chatId);
-                    const other = chat.user1 === userId ? chat.user2 : chat.user1;
-                    if (other && other !== "AI_GHOST") {
-                        tgSend(other, "💨 The other person left.\n\nTap <b>🔍 Find Match</b> for someone new 🚀", MAIN_KEYBOARD).catch(console.error);
-                    }
-                }
-            } catch (e) {
-                console.error("END_CHAT_FAIL:", e);
-            }
+            // Reply FIRST, then clean up DB in background
             await tgSend(userId, `🛑 <b>Chat ended.</b>\n\n${getMainMenuText()}`, MAIN_KEYBOARD);
+            // Background cleanup — never blocks the user
+            (async () => {
+                try {
+                    const chat = await getChatByUser(userId);
+                    if (chat) {
+                        await closeChat(chat.chatId);
+                        const other = chat.user1 === userId ? chat.user2 : chat.user1;
+                        if (other && other !== "AI_GHOST") {
+                            tgSend(other, "💨 The other person left.\n\nTap <b>🔍 Find Match</b> for someone new 🚀", MAIN_KEYBOARD).catch(console.error);
+                        }
+                    }
+                } catch (e) { console.error("STOP_CLEANUP_FAIL:", e); }
+            })().catch(console.error);
             return NextResponse.json({ ok: true });
         }
 
@@ -312,8 +324,9 @@ export async function POST(request: NextRequest) {
                 if (waiting) {
                     console.log("✅ HUMAN_FOUND:", waiting.chatId);
                     await connectChat(waiting.chatId, userId);
-                    await tgSend(userId, "✨ <b>Match found!</b>\n\nSay hi to your anonymous match 👋\n\n/next to skip • /stop to end", CHAT_KEYBOARD);
-                    await tgSend(waiting.user1, "✨ <b>Match found!</b>\n\nSomeone connected with you 👋\n\n/next to skip • /stop to end", CHAT_KEYBOARD);
+                    const matchGender = userPref;
+                    await tgSend(userId, `✨ <b>Match found!</b> (${matchGender}) ✨\n\n/next to skip • /stop to end`, CHAT_KEYBOARD);
+                    await tgSend(waiting.user1, `✨ <b>Match found!</b> (${userGender}) ✨\n\n/next to skip • /stop to end`, CHAT_KEYBOARD);
                     humanMatched = true;
                 } else {
                     console.log("❌ NO_HUMAN_FOUND");
@@ -346,12 +359,12 @@ export async function POST(request: NextRequest) {
                 // Even if Firestore fails, we STILL send the match message
             }
 
-            // 5. "Match Found" with Dynamic Identity
+            // 5. "Match Found" — anonymous, gender only
             await tgSend(userId,
-                `✨ <b>Match found!</b>\n\n🎭 You're chatting with <b>${ghost.display}</b>\n\n/next to skip • /stop to end`,
+                `✨ <b>Match found!</b> (${targetGender}) ✨\n\n/next to skip • /stop to end`,
                 CHAT_KEYBOARD
             );
-            console.log("MATCH_MSG_SENT");
+            console.log("MATCH_MSG_SENT:", targetGender);
 
             // 6. Typing indicator for 1 second
             await tgTyping(userId);
