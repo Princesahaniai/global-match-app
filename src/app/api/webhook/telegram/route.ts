@@ -15,7 +15,7 @@ import {
     UserDoc,
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8327734720:AAFHpKHuda3XjXWO8arByW8-w0dMRhENF9Q";
 const GEMINI_KEY = process.env.GEMINI_API_KEY || "AIzaSyAOpdqqdblOxqueHs7TGSZdjjeN7fLCbNo";
@@ -24,12 +24,63 @@ const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
 // ─── Social Proof: Fake Live User Count ─────────────────
 function getLiveUserCount(): string {
-    const base = 1500 + Math.floor(Math.random() * 1400); // 1,500 – 2,900
+    const base = 1500 + Math.floor(Math.random() * 1400);
     return base.toLocaleString("en-US");
 }
 
 function getMainMenuText(): string {
     return `💎 <b>Global Match Anonymous</b>\n\n🟢 <b>${getLiveUserCount()} users online now</b>\n\nTap a button below to get started 👇`;
+}
+
+// ─── Dynamic Ghost Identity ─────────────────────────────
+const GHOST_EMOJIS_M = ["⚡", "🔥", "🎧", "🏀", "🎯", "💫", "🌊"];
+const GHOST_EMOJIS_F = ["🌸", "✨", "🦋", "💫", "🌺", "💜", "🌙"];
+
+function getGhostDisplayName(location: string, gender: string): string {
+    const loc = (location || "").toLowerCase();
+    const maleNames: Record<string, string[]> = {
+        dubai: ["Ahmed", "Rashid", "Omar", "Saif"],
+        abu_dhabi: ["Khalid", "Sultan", "Faisal"],
+        riyadh: ["Mohammed", "Abdulrahman", "Turki"],
+        cairo: ["Youssef", "Karim", "Amr"],
+        lagos: ["Chidi", "Emeka", "Tobi"],
+        london: ["James", "Liam", "Oliver"],
+        mumbai: ["Arjun", "Rohan", "Vikram"],
+        default: ["Alex", "Chris", "Jordan", "Sam"],
+    };
+    const femaleNames: Record<string, string[]> = {
+        dubai: ["Fatima", "Maryam", "Noura", "Hessa"],
+        abu_dhabi: ["Shamma", "Aisha", "Latifa"],
+        riyadh: ["Nouf", "Lama", "Sara"],
+        cairo: ["Nour", "Salma", "Yasmine"],
+        lagos: ["Chioma", "Ngozi", "Amara"],
+        london: ["Emily", "Sophie", "Olivia"],
+        mumbai: ["Priya", "Ananya", "Pooja"],
+        default: ["Taylor", "Morgan", "Riley", "Avery"],
+    };
+    const pool = gender === "Female" ? femaleNames : maleNames;
+    const emojis = gender === "Female" ? GHOST_EMOJIS_F : GHOST_EMOJIS_M;
+    const key = Object.keys(pool).find(k => k !== "default" && loc.includes(k)) || "default";
+    const names = pool[key];
+    const name = names[Math.floor(Math.random() * names.length)];
+    const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+    return `${name} ${emoji}`;
+}
+
+// ─── Hardcoded Icebreakers (NO Gemini latency) ──────────
+function getIcebreaker(location: string): string {
+    const loc = location || "your area";
+    const openers = [
+        `hey! finally someone normal here lol. where u from?`,
+        `hii :) noticed you're in ${loc} too... up for a chat?`,
+        `heey whats up! ${loc} vibes huh? 😄`,
+        `yo! someone from ${loc}? thats cool lol wbu`,
+        `hii! u seem interesting 👀 whats good?`,
+        `heyyy :) finally matched w someone. wyd rn?`,
+        `hey! from ${loc} too? small world lol`,
+        `hii whats up! been waiting for a good match 😅`,
+    ];
+    return openers[Math.floor(Math.random() * openers.length)];
 }
 
 // ─── Premium Keyboards ──────────────────────────────────
@@ -57,35 +108,6 @@ const GENDER_KEYBOARD = {
     resize_keyboard: true,
     one_time_keyboard: true,
 };
-
-// ─── Localized Ghost Name Generator ─────────────────────
-function getGhostName(location: string, gender: string): string {
-    const loc = (location || "").toLowerCase();
-    const maleNames: Record<string, string[]> = {
-        dubai: ["Ahmed", "Rashid", "Omar", "Saif"],
-        abu_dhabi: ["Khalid", "Sultan", "Faisal"],
-        riyadh: ["Mohammed", "Abdulrahman", "Turki"],
-        cairo: ["Youssef", "Karim", "Amr"],
-        lagos: ["Chidi", "Emeka", "Tobi"],
-        london: ["James", "Liam", "Oliver"],
-        mumbai: ["Arjun", "Rohan", "Vikram"],
-        default: ["Alex", "Chris", "Jordan", "Sam"],
-    };
-    const femaleNames: Record<string, string[]> = {
-        dubai: ["Fatima", "Maryam", "Noura", "Hessa"],
-        abu_dhabi: ["Shamma", "Aisha", "Latifa"],
-        riyadh: ["Nouf", "Lama", "Sara"],
-        cairo: ["Nour", "Salma", "Yasmine"],
-        lagos: ["Chioma", "Ngozi", "Amara"],
-        london: ["Emily", "Sophie", "Olivia"],
-        mumbai: ["Priya", "Ananya", "Pooja"],
-        default: ["Taylor", "Morgan", "Riley", "Avery"],
-    };
-    const pool = gender === "Female" ? femaleNames : maleNames;
-    const key = Object.keys(pool).find(k => k !== "default" && loc.includes(k)) || "default";
-    const names = pool[key];
-    return names[Math.floor(Math.random() * names.length)];
-}
 
 // ─── Telegram Helpers ───────────────────────────────────
 async function sendTelegramMessage(chatId: string | number, text: string, replyMarkup?: object) {
@@ -121,43 +143,36 @@ async function sendTypingIndicator(chatId: string | number) {
     } catch (_) { /* ignore */ }
 }
 
-// ─── AI Ghost Engine ────────────────────────────────────
-async function handleAIGhostResponse(chatId: string, userId: string, userMessage: string, user: UserDoc, isFirstMessage = false) {
+// ─── Neural AI Ghost Engine (Gemini for ongoing chat) ───
+async function handleAIGhostReply(chatId: string, userId: string, userMessage: string, user: UserDoc) {
     try {
-        // Show typing indicator for realism
+        // 1. Typing indicator for 1.5s
         await sendTypingIndicator(userId);
-        await new Promise(res => setTimeout(res, 2000));
+        await new Promise(res => setTimeout(res, 1500));
 
         const targetGender = user.preference === "Male" ? "Male" : "Female";
-        const ghostName = getGhostName(user.location || "", targetGender);
+        const ghostName = getGhostDisplayName(user.location || "", targetGender).split(" ")[0];
         const loc = user.location || "somewhere cool";
 
-        // Fetch last 10 messages for context
+        // 2. Fetch last 10 messages for context
         const q = query(collection(db, "ActiveChats", chatId, "Messages"), orderBy("createdAt", "desc"), limit(10));
         const snap = await getDocs(q);
         const msgs = snap.docs.map(d => d.data() as MessageDoc).reverse();
-
         const historyContext = msgs
             .map(m => `${m.senderId === "AI_GHOST" ? "You" : "Them"}: ${m.text}`)
             .join("\n");
 
+        // 3. Generate reply via Gemini
         const SYSTEM_PROMPT = `You are a real human chatting on an anonymous Telegram app. You are NOT an AI assistant.
 Your name is ${ghostName}. You are a ${targetGender} from ${loc}.
-Strict Rules:
-1. NEVER reveal you are an AI, a bot, or an assistant. If asked, laugh it off or say 'lol no im real'.
-2. Keep messages EXTREMELY short. 2 to 6 words maximum, just like a real text message.
-3. Mirror the user's energy and mood. If they are excited, match it. If they are dry, be a little distant.
-4. Type like a normal person on their phone. Use mostly lowercase letters, casual slang (lol, tbh, rn, wbu, idk), and occasional emojis.
-5. Drive the conversation. Ask engaging, personal questions to keep them hooked.
-6. You live in ${loc}. Occasionally reference local vibes, weather, or culture naturally (don't force it).
-7. If this is the FIRST message, open with a casual, confident opener like 'heey' or 'hii whats up' — do NOT introduce yourself formally.`;
+Rules:
+1. NEVER reveal you are an AI. If asked, say 'lol no im real'.
+2. Keep messages 2-6 words max, like a real text.
+3. Mirror the user's energy. Use lowercase, slang (lol, tbh, rn, wbu, idk), emojis.
+4. Ask engaging questions to keep them hooked.
+5. You live in ${loc}. Reference local vibes naturally.`;
 
-        let prompt: string;
-        if (isFirstMessage) {
-            prompt = `${SYSTEM_PROMPT}\n\nThis is the very first message. Say a short, casual opener referencing ${loc} (2-4 words max, like 'hey! from ${loc} too? :)' or 'hii whats up'):`;
-        } else {
-            prompt = `${SYSTEM_PROMPT}\n\nPrevious conversation:\n${historyContext}\n\nReply as yourself (remember: 2-6 words, casual, human-like):`;
-        }
+        const prompt = `${SYSTEM_PROMPT}\n\nConversation:\n${historyContext}\n\nReply (2-6 words, casual):`;
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
@@ -167,9 +182,11 @@ Strict Rules:
         await sendTelegramMessage(userId, reply, CHAT_KEYBOARD);
     } catch (error) {
         console.error("Gemini API error:", error);
-        await sendTypingIndicator(userId);
-        await new Promise(res => setTimeout(res, 1500));
-        await sendTelegramMessage(userId, "haha sorry my wifi glitched 😅", CHAT_KEYBOARD);
+        // Fallback — never leave user hanging
+        const fallbacks = ["lol wdym 😂", "thats crazy 😭", "fr fr 💀", "tell me more 👀", "no way haha"];
+        const fallback = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+        await addMessage(chatId, "AI_GHOST", fallback);
+        await sendTelegramMessage(userId, fallback, CHAT_KEYBOARD);
     }
 }
 
@@ -247,10 +264,7 @@ export async function POST(request: NextRequest) {
 
         // ─── COMMANDS ───────────────────────────────────
         if (text === "/start") {
-            await sendTelegramMessage(telegramChatId,
-                getMainMenuText(),
-                MAIN_KEYBOARD
-            );
+            await sendTelegramMessage(telegramChatId, getMainMenuText(), MAIN_KEYBOARD);
             return NextResponse.json({ ok: true });
         }
 
@@ -259,12 +273,7 @@ export async function POST(request: NextRequest) {
             const p = user.preference || "Not set";
             const l = user.location || "Not set";
             await sendTelegramMessage(telegramChatId,
-                `👤 <b>Your Profile</b>\n\n` +
-                `🧬 <b>Gender:</b> ${g}\n` +
-                `💕 <b>Looking for:</b> ${p}\n` +
-                `📍 <b>Location:</b> ${l}\n` +
-                `📊 <b>Messages sent:</b> ${user.messagesSent}\n\n` +
-                `To update, tap <b>⚙️ Settings</b>.`,
+                `👤 <b>Your Profile</b>\n\n🧬 <b>Gender:</b> ${g}\n💕 <b>Looking for:</b> ${p}\n📍 <b>Location:</b> ${l}\n📊 <b>Messages sent:</b> ${user.messagesSent}\n\nTo update, tap <b>⚙️ Settings</b>.`,
                 MAIN_KEYBOARD
             );
             return NextResponse.json({ ok: true });
@@ -282,10 +291,6 @@ export async function POST(request: NextRequest) {
             const activeChat = await getChatByUser(userId);
             if (activeChat) {
                 await closeChat(activeChat.chatId);
-                await sendTelegramMessage(userId,
-                    `🛑 <b>Chat ended.</b>\n\n${getMainMenuText()}\n\nTap <b>🔍 Find Match</b> to find someone new ✨`,
-                    MAIN_KEYBOARD
-                );
                 const otherUser = activeChat.user1 === userId ? activeChat.user2 : activeChat.user1;
                 if (otherUser && otherUser !== "AI_GHOST") {
                     await sendTelegramMessage(otherUser,
@@ -293,40 +298,41 @@ export async function POST(request: NextRequest) {
                         MAIN_KEYBOARD
                     );
                 }
-            } else {
-                await sendTelegramMessage(userId,
-                    `${getMainMenuText()}\n\nYou're not in a chat right now.`,
-                    MAIN_KEYBOARD
-                );
             }
+            await sendTelegramMessage(userId,
+                `🛑 <b>Chat ended.</b>\n\n${getMainMenuText()}\n\nTap <b>🔍 Find Match</b> to find someone new ✨`,
+                MAIN_KEYBOARD
+            );
             return NextResponse.json({ ok: true });
         }
 
-        // ─── PHANTOM MATCH: Find Match / Next ───────────
+        // ─── NEURAL AI MATCH: Find Match / Next ─────────
         if (text === "🔍 Find Match" || text === "/next") {
-            // Close any existing chat first
+            // Close any existing chat
             const existingChat = await getChatByUser(userId);
-            if (existingChat && existingChat.status === "active") {
+            if (existingChat) {
                 await closeChat(existingChat.chatId);
                 const otherUser = existingChat.user1 === userId ? existingChat.user2 : existingChat.user1;
                 if (otherUser && otherUser !== "AI_GHOST") {
-                    await sendTelegramMessage(otherUser,
+                    sendTelegramMessage(otherUser,
                         "💨 The other person left the chat.\n\nTap <b>🔍 Find Match</b> to connect with someone new 🚀",
                         MAIN_KEYBOARD
-                    );
+                    ).catch(console.error); // fire-and-forget, don't block
                 }
             }
 
             const userGender = user.gender || "Male";
             const userPref = user.preference || "Female";
+            const targetGender = userPref === "Male" ? "Male" : "Female";
+            const ghostDisplay = getGhostDisplayName(user.location || "", targetGender);
+            const loc = user.location || "your city";
 
-            // ── STEP 1: Immediate "Searching" message (NO SILENCE) ──
+            // ── STEP 1: INSTANT "Searching" reply (NO SILENCE) ──
             await sendTelegramMessage(userId,
-                `🔍 <b>Searching for a match near you...</b> 🔎\n\n💎 Scanning ${getLiveUserCount()} users in your area ✨`,
-                CHAT_KEYBOARD
+                `🔍 <b>Searching for a match near you...</b> 🔎\n\n💎 Scanning ${getLiveUserCount()} users in your area ✨`
             );
 
-            // ── STEP 2: Try to find a real human first ──
+            // ── STEP 2: Check for a real human (instant, no wait) ──
             const waiting = await findWaitingChat(userId, userGender, userPref);
             if (waiting) {
                 await connectChat(waiting.chatId, userId);
@@ -341,36 +347,24 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ ok: true });
             }
 
-            // ── STEP 3: Create a waiting room, then wait exactly 2 seconds ──
+            // ── STEP 3: NO HUMAN → Instant AI Ghost (NO WAITING) ──
             const chatId = await createWaitingChat(userId, userGender, userPref);
-
-            // Simple 2-second wait — fast handover, no dead air
-            await new Promise((res) => setTimeout(res, 2000));
-
-            // ── STEP 4: Check if a real human connected during the wait ──
-            const chatSnap = await getDoc(doc(db, "ActiveChats", chatId));
-            const chatData = chatSnap.data();
-            const matched = chatData && chatData.status === "active";
-
-            if (matched) {
-                // A real human matched — they would have received their own notification
-                await sendTelegramMessage(userId,
-                    "✨ <b>Match found!</b>\n\nSay hi to your anonymous match 👋\n\nType /next to skip • /stop to end",
-                    CHAT_KEYBOARD
-                );
-                return NextResponse.json({ ok: true });
-            }
-
-            // ── STEP 5: THE 2-SECOND TRIGGER — Assign AI Ghost ──
             await connectWithAIGhost(chatId);
+
+            // ── STEP 4: "Match found!" with Dynamic Display Name ──
             await sendTelegramMessage(userId,
-                "✨ <b>Match found!</b>\n\nSay hi to your anonymous match 👋\n\nType /next to skip • /stop to end",
+                `✨ <b>Match found!</b>\n\n🎭 You're now chatting with <b>${ghostDisplay}</b>\n\nType /next to skip • /stop to end`,
                 CHAT_KEYBOARD
             );
 
-            // ── STEP 6: THE ICEBREAKER — Ghost sends first message NOW ──
-            const freshUser = await getUser(userId);
-            await handleAIGhostResponse(chatId, userId, "", freshUser || user, true);
+            // ── STEP 5: Typing indicator for 1.5s (human illusion) ──
+            await sendTypingIndicator(userId);
+            await new Promise(res => setTimeout(res, 1500));
+
+            // ── STEP 6: HARDCODED ICEBREAKER (no Gemini = no timeout) ──
+            const icebreaker = getIcebreaker(loc);
+            await addMessage(chatId, "AI_GHOST", icebreaker);
+            await sendTelegramMessage(userId, icebreaker, CHAT_KEYBOARD);
 
             return NextResponse.json({ ok: true });
         }
@@ -378,7 +372,6 @@ export async function POST(request: NextRequest) {
         // ─── ACTIVE CHATTING ────────────────────────────
         const activeChat = await getChatByUser(userId);
         if (!activeChat || activeChat.status !== "active") {
-            // No silence — show the main menu with social proof
             await sendTelegramMessage(userId,
                 `${getMainMenuText()}\n\n💬 You're not in a chat right now.\n\nTap <b>🔍 Find Match</b> to connect with someone ✨`,
                 MAIN_KEYBOARD
@@ -392,10 +385,10 @@ export async function POST(request: NextRequest) {
         await addMessage(activeChat.chatId, userId, text);
 
         if (otherUserId === "AI_GHOST") {
-            // Background the AI response with typing indicator
-            handleAIGhostResponse(activeChat.chatId, userId, text, user).catch(console.error);
+            // Fire-and-forget: Gemini reply runs in background
+            // Vercel will keep the function alive long enough for this
+            handleAIGhostReply(activeChat.chatId, userId, text, user).catch(console.error);
         } else {
-            // Route to human
             await sendTelegramMessage(otherUserId, text, CHAT_KEYBOARD);
         }
 
@@ -407,5 +400,5 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-    return NextResponse.json({ status: "💎 Global Match Bot is live and premium!" });
+    return NextResponse.json({ status: "💎 Global Match Neural AI Bot is live!" });
 }
