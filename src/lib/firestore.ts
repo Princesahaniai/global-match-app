@@ -28,6 +28,10 @@ export interface UserDoc {
     isUnlimited: boolean;
     referredBy?: string;
     createdAt: Timestamp;
+    gender?: string;
+    preference?: string;
+    location?: string;
+    onboardingStep: "ask_gender" | "ask_preference" | "ask_location" | "complete";
 }
 
 export async function getOrCreateUser(
@@ -48,6 +52,7 @@ export async function getOrCreateUser(
         isUnlimited: false,
         referredBy: referredBy || undefined,
         createdAt: Timestamp.now(),
+        onboardingStep: "ask_gender",
     };
 
     await setDoc(ref, newUser);
@@ -58,6 +63,11 @@ export async function getOrCreateUser(
     }
 
     return newUser;
+}
+
+export async function updateUserProfile(userId: string, updates: Partial<UserDoc>): Promise<void> {
+    const ref = doc(db, "Users", userId);
+    await updateDoc(ref, updates as Record<string, unknown>);
 }
 
 export async function getUser(telegramId: string): Promise<UserDoc | null> {
@@ -95,14 +105,20 @@ export interface ChatDoc {
     user2: string;
     status: "waiting" | "active" | "closed";
     lastMessageAt: Timestamp;
+    waiterGender: string;
+    waiterPreference: string;
 }
 
 export async function findWaitingChat(
-    excludeUserId: string
+    excludeUserId: string,
+    userGender: string,
+    userPreference: string
 ): Promise<ChatDoc | null> {
     const q = query(
         collection(db, "ActiveChats"),
         where("status", "==", "waiting"),
+        where("waiterGender", "==", userPreference),
+        where("waiterPreference", "==", userGender),
         where("user1", "!=", excludeUserId),
         limit(1)
     );
@@ -111,7 +127,11 @@ export async function findWaitingChat(
     return snap.docs[0].data() as ChatDoc;
 }
 
-export async function createWaitingChat(userId: string): Promise<string> {
+export async function createWaitingChat(
+    userId: string,
+    userGender: string,
+    userPreference: string
+): Promise<string> {
     const chatId = uuidv4();
     const chatDoc: ChatDoc = {
         chatId,
@@ -119,6 +139,8 @@ export async function createWaitingChat(userId: string): Promise<string> {
         user2: "",
         status: "waiting",
         lastMessageAt: Timestamp.now(),
+        waiterGender: userGender,
+        waiterPreference: userPreference,
     };
     await setDoc(doc(db, "ActiveChats", chatId), chatDoc);
     return chatId;
