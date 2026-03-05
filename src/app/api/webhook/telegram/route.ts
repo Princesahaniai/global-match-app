@@ -59,18 +59,20 @@ function getGhostIdentity(location: string, gender: string): { name: string; age
     return { name, age, display: `${name}, ${age} ${emoji}` };
 }
 
-// ─── Hardcoded Icebreakers (under 5 words) ──────────────
+// ─── Hardcoded Icebreakers (Unique & Addictive Hooks) ─────
 function getIcebreaker(location: string): string {
     const loc = location || "there";
     const openers = [
-        `heey whats up :)`,
-        `hii wyd rn`,
-        `yo from ${loc}? 😄`,
-        `hii u seem cool`,
-        `heyyy whats good 👀`,
-        `hey finally a match`,
-        `hii lol wbu`,
-        `yo whats up 😊`,
+        `heey whats up :) wbu?`,
+        `hii wyd rn, u local?`,
+        `yo from ${loc}? 😄 what u looking for lol`,
+        `hii u seem cool... wbu?`,
+        `heyyy whats good 👀 u from around here?`,
+        `hey finally a match. wyd?`,
+        `hii lol, what u looking for here?`,
+        `yo whats up 😊 u local?`,
+        `finally someone normal in ${loc} lol. wydrn?`,
+        `heyy just got here, u local?`
     ];
     return openers[Math.floor(Math.random() * openers.length)];
 }
@@ -134,7 +136,8 @@ async function geminiReply(chatId: string, userId: string, user: UserDoc) {
     try {
         console.log("GEMINI_REPLY_START:", chatId);
         await tgTyping(userId);
-        await new Promise(res => setTimeout(res, 1500));
+        // EXACTLY 1 second latency bypass
+        await new Promise(res => setTimeout(res, 1000));
 
         const targetGender = user.preference === "Male" ? "Male" : "Female";
         const ghost = getGhostIdentity(user.location || "", targetGender);
@@ -149,19 +152,17 @@ async function geminiReply(chatId: string, userId: string, user: UserDoc) {
 You are a ${targetGender} named ${ghost.name}, age ${ghost.age}, from ${loc}.
 
 CRITICAL MIRRORING RULES:
-1. Mirror the user EXACTLY: if they use lowercase, you use lowercase. If they send 2 words, you send 2 words.
-2. NEVER exceed 5 words. Real texters are brief.
-3. Use local slang from ${loc}. Reference local culture naturally.
-4. Your ONLY goal is to make them addicted to chatting with you.
-5. Ask short, engaging questions. Be curious about THEM.
-6. Use emojis sparingly, like a real person (1 max per message).
-7. If asked if you're a bot/AI, deflect: "lol no" or "wdym 😂"
-8. Match their vibe: if they're flirty, flirt back. If dry, be chill.
+1. You MUST mirror the user's style. If they are dry, be dry. If they flirt, flirt back. Use local slang from ${loc}.
+2. Never use more than 10 words per message in the first 5 minutes of chat.
+3. Your ONLY goal is to make them addicted to chatting with you.
+4. ALWAYS end your message with a casual question (e.g., 'wbu?', 'u local?', 'what u looking for lol') to keep them typing.
+5. If asked if you're a bot/AI, deflect: "lol no" or "wdym 😂"
+6. NEVER be overly helpful or polite. Act like a normal bored person on their phone.
 
 Conversation:
 ${history}
 
-Reply (mirror their style, max 5 words):`;
+Reply (mirror them, max 10 words, end with question):`;
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
