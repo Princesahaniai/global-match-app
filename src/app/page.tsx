@@ -116,120 +116,7 @@ function TypingIndicator() {
   );
 }
 
-// ─── Limit Modal ────────────────────────────────────────
 
-function LimitModal({
-  inviteLink,
-  onCopy,
-  referralCount,
-}: {
-  inviteLink: string;
-  onCopy: () => void;
-  referralCount: number;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(inviteLink);
-    setCopied(true);
-    onCopy();
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="modal-overlay">
-      <div
-        className="glass-card p-8 mx-4 max-w-sm w-full text-center"
-        style={{ animation: "slide-up 0.4s ease" }}
-      >
-        {/* Lock icon */}
-        <div
-          className="w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-5"
-          style={{ background: "var(--bg-card)" }}
-        >
-          <svg
-            width="36"
-            height="36"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--accent-pink)"
-            strokeWidth="2"
-          >
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-        </div>
-
-        <h2
-          className="text-2xl font-bold mb-2"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Message Limit Reached
-        </h2>
-
-        <p
-          className="text-sm mb-6"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          You&apos;ve sent 15 messages! Invite{" "}
-          <span className="text-gradient font-bold">3 friends</span> to unlock
-          unlimited chatting.
-        </p>
-
-        {/* Progress */}
-        <div className="mb-6">
-          <div className="flex justify-between text-xs mb-2">
-            <span style={{ color: "var(--text-secondary)" }}>Referrals</span>
-            <span className="text-gradient font-bold">{referralCount}/3</span>
-          </div>
-          <div
-            className="h-2 rounded-full overflow-hidden"
-            style={{ background: "var(--bg-primary)" }}
-          >
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${Math.min((referralCount / 3) * 100, 100)}%`,
-                background: "var(--gradient-primary)",
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Invite link */}
-        <div
-          className="rounded-xl p-3 mb-4 flex items-center gap-2"
-          style={{ background: "var(--bg-primary)" }}
-        >
-          <span
-            className="text-xs truncate flex-1 text-left"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            {inviteLink}
-          </span>
-          <button
-            onClick={handleCopy}
-            className="btn-gradient px-4 py-2 text-xs whitespace-nowrap"
-          >
-            {copied ? "✓ Copied!" : "Copy"}
-          </button>
-        </div>
-
-        <button
-          onClick={() =>
-            window.open(
-              `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent("Join me on Global Match Anonymous! 🌐🔥")}`,
-              "_blank"
-            )
-          }
-          className="btn-gradient w-full py-3 text-sm mt-2"
-        >
-          📨 Share on Telegram
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ─── Blur Teaser ────────────────────────────────────────
 
@@ -296,11 +183,11 @@ function BlurTeaser({ inviteLink }: { inviteLink: string }) {
 // ─── Live User Counter (Social Proof) ───────────────────
 
 function LiveUserCounter() {
-  const [count, setCount] = useState(() => 1500 + Math.floor(Math.random() * 1400));
+  const [count, setCount] = useState(() => 3100 + Math.floor(Math.random() * 1400));
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setCount(1500 + Math.floor(Math.random() * 1400));
+      setCount(3100 + Math.floor(Math.random() * 1400));
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -344,7 +231,6 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [showLimitModal, setShowLimitModal] = useState(false);
   const [showBlurTeaser, setShowBlurTeaser] = useState(false);
   const [userData, setUserData] = useState<UserDoc | null>(null);
   const [messageCount, setMessageCount] = useState(0);
@@ -493,12 +379,6 @@ export default function Home() {
     const text = inputText.trim();
     setInputText("");
 
-    // Check message limit
-    if (userData && !userData.isUnlimited && messageCount >= 15) {
-      setShowLimitModal(true);
-      return;
-    }
-
     // Add message to Firestore
     await addMessage(chatId, userId, text);
     const newCount = await incrementMessages(userId);
@@ -507,12 +387,6 @@ export default function Home() {
     // Refresh user data
     const freshUser = await getUser(userId);
     if (freshUser) setUserData(freshUser);
-
-    // Check if limit reached AFTER sending
-    if (freshUser && !freshUser.isUnlimited && newCount >= 15) {
-      setTimeout(() => setShowLimitModal(true), 500);
-      return;
-    }
 
     // If AI chat, get AI response
     if (isAI) {
@@ -593,21 +467,7 @@ export default function Home() {
           🔍 Find Match
         </button>
 
-        {/* Invite link */}
-        {userId && (
-          <button
-            onClick={() =>
-              window.open(
-                `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent("Join me on Global Match Anonymous! 🌐🔥")}`,
-                "_blank"
-              )
-            }
-            className="mt-4 text-xs underline"
-            style={{ color: "var(--text-muted)", animation: "fade-in 1.2s ease" }}
-          >
-            📨 Invite friends to unlock unlimited
-          </button>
-        )}
+
       </main>
     );
   }
@@ -779,14 +639,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Limit Modal */}
-      {showLimitModal && (
-        <LimitModal
-          inviteLink={inviteLink}
-          onCopy={() => { }}
-          referralCount={userData?.referralCount || 0}
-        />
-      )}
+
     </main>
   );
 }

@@ -24,11 +24,12 @@ const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
 // ─── Social Proof ───────────────────────────────────────
 function getLiveUserCount(): string {
-    return (1500 + Math.floor(Math.random() * 1400)).toLocaleString("en-US");
+    return (3100 + Math.floor(Math.random() * 1400)).toLocaleString("en-US");
 }
 
-function getMainMenuText(): string {
-    return `💎 <b>Global Match Anonymous</b>\n\n🟢 <b>${getLiveUserCount()} users online now</b>\n\nTap a button below 👇`;
+function getMainMenuText(location?: string): string {
+    const loc = location || "your area";
+    return `💎 <b>Global Match Anonymous</b>\n\n🟢 <b>${getLiveUserCount()} users online now</b>\n🔥 Someone just matched in ${loc}!\n\nTap a button below 👇`;
 }
 
 // ─── Dynamic Ghost Identity (Name + Age + Emoji) ────────
@@ -63,6 +64,7 @@ function getGhostIdentity(location: string, gender: string): { name: string; age
 function getIcebreaker(location: string): string {
     const loc = location || "there";
     const openers = [
+        `hey, u lookin for fun or just chat? lol`,
         `heey whats up :) wbu?`,
         `hii wyd rn, u local?`,
         `yo from ${loc}? 😄 what u looking for lol`,
@@ -81,6 +83,7 @@ function getIcebreaker(location: string): string {
 const MAIN_KEYBOARD = {
     keyboard: [
         [{ text: "🔍 Find Match" }, { text: "👤 My Profile" }],
+        [{ text: "💎 Get Featured Profile" }],
         [{ text: "⚙️ Settings" }, { text: "❌ End Chat" }],
     ],
     resize_keyboard: true,
@@ -148,21 +151,21 @@ async function geminiReply(chatId: string, userId: string, user: UserDoc) {
         const msgs = snap.docs.map(d => d.data() as MessageDoc).reverse();
         const history = msgs.map(m => `${m.senderId === "AI_GHOST" ? "You" : "Them"}: ${m.text}`).join("\n");
 
-        const prompt = `You are a human user on an anonymous chat app. You are NOT an AI assistant. DO NOT act like one.
+        const prompt = `You are a real human on an anonymous chat app, NOT an AI. Use common sense.
 You are a ${targetGender} named ${ghost.name}, age ${ghost.age}, from ${loc}.
 
 CRITICAL MIRRORING RULES:
-1. You MUST mirror the user's style. If they are dry, be dry. If they flirt, flirt back. Use local slang from ${loc}.
-2. Never use more than 10 words per message in the first 5 minutes of chat.
-3. Your ONLY goal is to make them addicted to chatting with you.
-4. ALWAYS end your message with a casual question (e.g., 'wbu?', 'u local?', 'what u looking for lol') to keep them typing.
-5. If asked if you're a bot/AI, deflect: "lol no" or "wdym 😂"
-6. NEVER be overly helpful or polite. Act like a normal bored person on their phone.
+1. You MUST mirror the user's style. Use lowercase and short, slang-filled replies.
+2. If the user is dry, be sassy. If they flirt, be fun.
+3. Your goal is to keep them addicted to the chat.
+4. Never use more than 10 words.
+5. ALWAYS end your message with a casual question (e.g., 'wbu?', 'u local?', 'what u looking for lol').
+6. If asked if you're a bot/AI, deflect naturally ("lol no", "wdym").
 
 Conversation:
 ${history}
 
-Reply (mirror them, max 10 words, end with question):`;
+Reply (real human, max 10 words, end with question):`;
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
@@ -192,9 +195,15 @@ export async function POST(request: NextRequest) {
         console.log("📩 WEBHOOK:", userId, text);
 
         // ─── Get or create user ─────────────────────────
+        let refId = undefined;
+        if (text.startsWith("/start ")) {
+            const parts = text.split(" ");
+            if (parts[1] && parts[1] !== userId) refId = parts[1];
+        }
+
         let user: UserDoc;
         try {
-            user = await getOrCreateUser(userId);
+            user = await getOrCreateUser(userId, refId);
         } catch (e) {
             console.error("GET_USER_FAIL:", e);
             await tgSend(userId, "⚠️ Something went wrong. Please try again.", MAIN_KEYBOARD);
@@ -235,7 +244,7 @@ export async function POST(request: NextRequest) {
 
             if (user.onboardingStep === "ask_location") {
                 await updateUserProfile(userId, { location: text, onboardingStep: "complete" });
-                await tgSend(userId, `🚀 <b>Profile complete!</b>\n\n${getMainMenuText()}\n\nTap <b>🔍 Find Match</b> to start ✨`, MAIN_KEYBOARD);
+                await tgSend(userId, `🚀 <b>Profile complete!</b>\n\n${getMainMenuText(text)}\n\nTap <b>🔍 Find Match</b> to start ✨`, MAIN_KEYBOARD);
                 return NextResponse.json({ ok: true });
             }
 
@@ -244,8 +253,8 @@ export async function POST(request: NextRequest) {
         }
 
         // ─── /start ─────────────────────────────────────
-        if (text === "/start") {
-            await tgSend(userId, getMainMenuText(), MAIN_KEYBOARD);
+        if (text.startsWith("/start")) {
+            await tgSend(userId, getMainMenuText(user.location), MAIN_KEYBOARD);
             return NextResponse.json({ ok: true });
         }
 
@@ -264,10 +273,23 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ ok: true });
         }
 
+        // ─── Featured Profile ───────────────────────────
+        if (text === "💎 Get Featured Profile") {
+            const needed = Math.max(0, 3 - (user.referralCount || 0));
+            if (needed > 0) {
+                const botUsername = process.env.NEXT_PUBLIC_BOT_USERNAME || "GlobalMatchAnonymousBot";
+                const inviteLink = `https://t.me/${botUsername}?start=${userId}`;
+                await tgSend(userId, `💎 <b>Get Featured Profile</b>\n\nWant to skip the line and match instantly with top users?\n\nInvite <b>${needed} more friends</b> to unlock Featured status.\n\n👇 Your private invite link:\n<code>${inviteLink}</code>\n\n<i>(Tap to copy and share!)</i>`, MAIN_KEYBOARD);
+            } else {
+                await tgSend(userId, `💎 <b>Featured Profile UNLOCKED</b>\n\nYou are now a Featured user! Your profile is prioritized in matchmaking. ✨`, MAIN_KEYBOARD);
+            }
+            return NextResponse.json({ ok: true });
+        }
+
         // ─── /stop — INSTANT menu, fire-and-forget DB ─
         if (text === "❌ End Chat" || text === "/stop") {
             // Reply FIRST, then clean up DB in background
-            await tgSend(userId, `🛑 <b>Chat ended.</b>\n\n${getMainMenuText()}`, MAIN_KEYBOARD);
+            await tgSend(userId, `🛑 <b>Chat ended.</b>\n\n${getMainMenuText(user.location)}`, MAIN_KEYBOARD);
             // Background cleanup — never blocks the user
             (async () => {
                 try {
@@ -394,7 +416,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (!activeChat || activeChat.status !== "active") {
-            await tgSend(userId, `${getMainMenuText()}\n\n💬 Not in a chat. Tap <b>🔍 Find Match</b> ✨`, MAIN_KEYBOARD);
+            await tgSend(userId, `${getMainMenuText(user.location)}\n\n💬 Not in a chat. Tap <b>🔍 Find Match</b> ✨`, MAIN_KEYBOARD);
             return NextResponse.json({ ok: true });
         }
 
