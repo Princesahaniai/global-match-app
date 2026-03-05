@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, getFirestore, Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCjQ9VLmqcoucEoXkoG0qQye-FyaOMcua4",
@@ -11,6 +11,13 @@ const firebaseConfig = {
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getFirestore(app);
+
+// CRITICAL: ignoreUndefinedProperties prevents crashes on undefined fields
+let db: Firestore;
+try {
+  db = initializeFirestore(app, { ignoreUndefinedProperties: true });
+} catch {
+  db = getFirestore(app);
+}
 
 export { db };
