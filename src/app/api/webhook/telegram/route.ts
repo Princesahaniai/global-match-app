@@ -17,6 +17,7 @@ import {
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 
+// ─── STRICT API KEYS ──────────────────────────────────────────────
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8327734720:AAFHpKHuda3XjXWO8arByW8-w0dMRhENF9Q";
 const GEMINI_KEY = process.env.GEMINI_API_KEY || "AIzaSyAOpdqqdblOxqueHs7TGSZdjjeN7fLCbNo";
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
@@ -167,6 +168,7 @@ ${history}
 
 Reply (real human, max 10 words, end with question):`;
 
+        console.log("AI_CALLED: Calling Gemini API...");
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
         const reply = result.response.text().trim();
@@ -174,8 +176,15 @@ Reply (real human, max 10 words, end with question):`;
 
         await addMessage(chatId, "AI_GHOST", reply);
         await tgSend(userId, reply, CHAT_KEYBOARD);
-    } catch (error) {
-        console.error("GEMINI_REPLY_FAIL:", error);
+        console.log("REPLY_SENT: AI message delivered to user via Telegram.");
+    } catch (error: any) {
+        console.error("GEMINI_REPLY_FAIL (CRITICAL):", error);
+
+        // Detailed error reporting to the user
+        const errorMsg = `🚨 <b>AI Error:</b> ${error?.message || "Unknown Gemini API failure."}`;
+        await tgSend(userId, errorMsg, CHAT_KEYBOARD);
+
+        // Fallback message execution
         const fallbacks = ["lol wdym 😂", "thats crazy 😭", "fr fr 💀", "tell me more 👀", "no way haha", "wbu tho 👀"];
         const fb = fallbacks[Math.floor(Math.random() * fallbacks.length)];
         try { await addMessage(chatId, "AI_GHOST", fb); } catch (_) { /* ignore */ }
@@ -192,7 +201,7 @@ export async function POST(request: NextRequest) {
 
         const userId = (message.from?.id || message.chat.id).toString();
         const text = message.text.trim();
-        console.log("📩 WEBHOOK:", userId, text);
+        console.log("MESSAGE_RECEIVED:", userId, text);
 
         // ─── Get or create user ─────────────────────────
         let refId = undefined;
@@ -204,9 +213,10 @@ export async function POST(request: NextRequest) {
         let user: UserDoc;
         try {
             user = await getOrCreateUser(userId, refId);
-        } catch (e) {
+        } catch (e: any) {
             console.error("GET_USER_FAIL:", e);
-            await tgSend(userId, "⚠️ Something went wrong. Please try again.", MAIN_KEYBOARD);
+            const errorMsg = `🚨 <b>DB Error (User Setup):</b> ${e?.message || "Failed to load user profile."}`;
+            await tgSend(userId, errorMsg, MAIN_KEYBOARD);
             return NextResponse.json({ ok: true });
         }
 
@@ -354,8 +364,9 @@ export async function POST(request: NextRequest) {
                 } else {
                     console.log("❌ NO_HUMAN_FOUND");
                 }
-            } catch (e) {
+            } catch (e: any) {
                 console.error("HUMAN_CHECK_FAIL:", e);
+                await tgSend(userId, `🚨 <b>DB Error (Searching):</b> ${e?.message || "Failed to search for humans."}`);
             }
 
             if (humanMatched) {
@@ -377,8 +388,9 @@ export async function POST(request: NextRequest) {
                 console.log("CHAT_CREATED:", chatId);
                 await connectWithAIGhost(chatId);
                 console.log("AI_CONNECTED:", chatId);
-            } catch (e) {
+            } catch (e: any) {
                 console.error("CREATE_CHAT_FAIL:", e);
+                await tgSend(userId, `🚨 <b>DB Error (AI Setup):</b> ${e?.message || "Failed to assign AI chat."}`);
                 // Even if Firestore fails, we STILL send the match message
             }
 
@@ -398,8 +410,9 @@ export async function POST(request: NextRequest) {
             console.log("ICEBREAKER:", icebreaker);
             try {
                 await addMessage(chatId, "AI_GHOST", icebreaker);
-            } catch (e) {
+            } catch (e: any) {
                 console.error("ADD_ICEBREAKER_FAIL:", e);
+                await tgSend(userId, `🚨 <b>DB Error (Icebreaker):</b> ${e?.message || "Failed to save AI icebreaker."}`);
             }
             await tgSend(userId, icebreaker, CHAT_KEYBOARD);
             console.log("✅ NEURAL_AI_COMPLETE for user:", userId);
@@ -429,14 +442,29 @@ export async function POST(request: NextRequest) {
         }
 
         if (otherUserId === "AI_GHOST") {
-            geminiReply(activeChat.chatId, userId, user).catch(console.error);
+            geminiReply(activeChat.chatId, userId, user).catch(async (err) => {
+                console.error("FATAL_GEMINI_EXECUTION:", err);
+                await tgSend(userId, `🚨 <b>Fatal AI Error:</b> ${err?.message || "Gemini execution crashed."}`, CHAT_KEYBOARD);
+            });
         } else {
             await tgSend(otherUserId, text, CHAT_KEYBOARD);
+            console.log("REPLY_SENT: User message delivered to other human.");
         }
 
         return NextResponse.json({ ok: true });
-    } catch (error) {
+    } catch (error: any) {
         console.error("❌ FATAL_WEBHOOK_ERROR:", error);
+
+        // Attempt to notify user of fatal errors if we have their ID
+        const update = await request.clone().json().catch(() => null);
+        const msg = update?.message || update?.edited_message;
+        if (msg) {
+            const uId = msg.from?.id || msg.chat?.id;
+            if (uId) {
+                tgSend(uId, `🚨 <b>Fatal System Error:</b> ${error?.message || "Webhook crashed."}`).catch(console.error);
+            }
+        }
+
         return NextResponse.json({ ok: true });
     }
 }
