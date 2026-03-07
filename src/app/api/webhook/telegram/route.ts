@@ -15,11 +15,11 @@ import {
     UserDoc,
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { collection, query, orderBy, limit, getDocs, doc, getDoc } from "firebase/firestore";
 
-// ─── STRICT API KEYS ──────────────────────────────────────────────
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8327734720:AAFHpKHuda3XjXWO8arByW8-w0dMRhENF9Q";
-const GEMINI_KEY = process.env.GEMINI_API_KEY || "AIzaSyAOpdqqdblOxqueHs7TGSZdjjeN7fLCbNo";
+// ─── STRICT API KEYS (env-only, no hardcoded fallbacks) ──────────
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
+const GEMINI_KEY = process.env.GEMINI_API_KEY!;
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 const genAI = new GoogleGenerativeAI(GEMINI_KEY);
 
@@ -268,6 +268,49 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ ok: true });
         }
 
+        // ─── /debug — System Health Check ───────────────
+        if (text === "/debug") {
+            let dbStatus = "❌ UNKNOWN";
+            let aiStatus = "❌ UNKNOWN";
+            let matchStatus = "❌ UNKNOWN";
+
+            // 1. Firebase check
+            try {
+                const testRef = doc(db, "Users", userId);
+                const testSnap = await getDoc(testRef);
+                dbStatus = testSnap.exists() ? "✅ OK" : "✅ OK (user doc not found, but connection works)";
+            } catch (e: any) {
+                dbStatus = `❌ ${e?.message || "Firebase connection failed"}`;
+            }
+
+            // 2. Gemini check
+            try {
+                const testModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const testResult = await testModel.generateContent("Say OK");
+                const testReply = testResult.response.text().trim();
+                aiStatus = testReply ? `✅ OK (replied: ${testReply.substring(0, 30)})` : "❌ Empty response";
+            } catch (e: any) {
+                aiStatus = `❌ ${e?.message || "Gemini API failed"}`;
+            }
+
+            // 3. Match logic check
+            try {
+                await findWaitingChat("__debug_test__", "Male", "Female");
+                matchStatus = "✅ OK";
+            } catch (e: any) {
+                matchStatus = `❌ ${e?.message || "Match query failed"}`;
+            }
+
+            await tgSend(userId,
+                `🛠️ <b>System Health Check:</b>\n\n` +
+                `- Database (Firebase): ${dbStatus}\n` +
+                `- AI Engine (Gemini): ${aiStatus}\n` +
+                `- Webhook Match Logic: ${matchStatus}`,
+                MAIN_KEYBOARD
+            );
+            return NextResponse.json({ ok: true });
+        }
+
         // ─── My Profile ────────────────────────────────
         if (text === "👤 My Profile") {
             await tgSend(userId,
@@ -296,23 +339,19 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ ok: true });
         }
 
-        // ─── /stop — INSTANT menu, fire-and-forget DB ─
+        // ─── /stop — cleanup THEN reply (Vercel kills function after response) ─
         if (text === "❌ End Chat" || text === "/stop") {
-            // Reply FIRST, then clean up DB in background
-            await tgSend(userId, `🛑 <b>Chat ended.</b>\n\n${getMainMenuText(user.location)}`, MAIN_KEYBOARD);
-            // Background cleanup — never blocks the user
-            (async () => {
-                try {
-                    const chat = await getChatByUser(userId);
-                    if (chat) {
-                        await closeChat(chat.chatId);
-                        const other = chat.user1 === userId ? chat.user2 : chat.user1;
-                        if (other && other !== "AI_GHOST") {
-                            tgSend(other, "💨 The other person left.\n\nTap <b>🔍 Find Match</b> for someone new 🚀", MAIN_KEYBOARD).catch(console.error);
-                        }
+            try {
+                const chat = await getChatByUser(userId);
+                if (chat) {
+                    await closeChat(chat.chatId);
+                    const other = chat.user1 === userId ? chat.user2 : chat.user1;
+                    if (other && other !== "AI_GHOST") {
+                        await tgSend(other, "💨 The other person left.\n\nTap <b>🔍 Find Match</b> for someone new 🚀", MAIN_KEYBOARD);
                     }
-                } catch (e) { console.error("STOP_CLEANUP_FAIL:", e); }
-            })().catch(console.error);
+                }
+            } catch (e) { console.error("STOP_CLEANUP_FAIL:", e); }
+            await tgSend(userId, `🛑 <b>Chat ended.</b>\n\n${getMainMenuText(user.location)}`, MAIN_KEYBOARD);
             return NextResponse.json({ ok: true });
         }
 
@@ -442,10 +481,12 @@ export async function POST(request: NextRequest) {
         }
 
         if (otherUserId === "AI_GHOST") {
-            geminiReply(activeChat.chatId, userId, user).catch(async (err) => {
+            try {
+                await geminiReply(activeChat.chatId, userId, user);
+            } catch (err: any) {
                 console.error("FATAL_GEMINI_EXECUTION:", err);
                 await tgSend(userId, `🚨 <b>Fatal AI Error:</b> ${err?.message || "Gemini execution crashed."}`, CHAT_KEYBOARD);
-            });
+            }
         } else {
             await tgSend(otherUserId, text, CHAT_KEYBOARD);
             console.log("REPLY_SENT: User message delivered to other human.");
