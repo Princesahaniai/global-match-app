@@ -181,8 +181,8 @@ ${history}
 
 Reply:`;
 
-        console.log("AI_CALLED: Calling Gemini 1.5 Flash (optimized)...");
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+        console.log("AI_CALLED: Calling Stable Gemini 1.5 Flash (v1)...");
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const result = await model.generateContent(prompt);
         const reply = result.response.text().trim();
 
@@ -295,12 +295,12 @@ export async function POST(request: NextRequest) {
                 dbStatus = `❌ ${e?.message || "Firebase connection failed"}`;
             }
 
-            // 2. Gemini check
+            // 2. Gemini check (Stable v1 Engine)
             try {
-                const testModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+                const testModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
                 const testResult = await testModel.generateContent("Say OK");
                 const testReply = testResult.response.text().trim();
-                aiStatus = testReply ? `✅ OK (replied: ${testReply.substring(0, 30)})` : "❌ Empty response";
+                aiStatus = testReply ? `✅ OK (Stable v1 Mode: ${testReply.substring(0, 30)})` : "❌ Empty response";
             } catch (e: any) {
                 aiStatus = `❌ ${e?.message || "Gemini API failed"}`;
             }
