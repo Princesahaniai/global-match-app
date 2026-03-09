@@ -187,7 +187,7 @@ ${history}
 Reply:`;
 
         console.log("AI_CALLED: Calling Gemini (unlimited time, maxDuration=60)...");
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const result = await model.generateContent(prompt);
         const reply = result.response.text().trim();
 
@@ -302,7 +302,7 @@ export async function POST(request: NextRequest) {
 
             // 2. Gemini check
             try {
-                const testModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const testModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
                 const testResult = await testModel.generateContent("Say OK");
                 const testReply = testResult.response.text().trim();
                 aiStatus = testReply ? `✅ OK (replied: ${testReply.substring(0, 30)})` : "❌ Empty response";
