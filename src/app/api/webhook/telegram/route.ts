@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 import {
     getOrCreateUser,
     updateUserProfile,
@@ -137,10 +140,11 @@ async function tgTyping(chatId: string | number) {
 
 // ─── SLANG FALLBACKS (used when Gemini times out or fails) ──
 const SLANG_FALLBACKS = [
-    "lol true 😂 wbu?", "thats crazy 😭 what else?", "fr fr 💀 u?",
-    "tell me more 👀", "no way haha wyd tho?", "wbu tho 👀",
-    "lol wdym 😂", "bruh 💀 wbu?", "nahhh 😭 u fr?",
-    "okk lol what u into?", "haha thats wild wbu?", "slay 😂 wyd rn?",
+    "my wifi is acting up lol", "wait what?", "im so confused rn",
+    "bruh my connection is bad", "what did u say? msgs acting weird",
+    "hold up phone glitching", "wait hold on", "u there? wifi died",
+    "wtf my app keeps crashing", "lol my bad phone is lagging", "huh?",
+    "my texts are sending slow sorry"
 ];
 function getSlangFallback(exclude: string = ""): string {
     const available = SLANG_FALLBACKS.filter(fb => fb !== exclude);
@@ -149,8 +153,8 @@ function getSlangFallback(exclude: string = ""): string {
 }
 
 // ─── Mirroring AI Engine (Adaptive Persona) ─────────────
-// STRICT 4500ms timeout on Gemini — falls back to slang if slow
 async function geminiReply(chatId: string, userId: string, user: UserDoc) {
+    let lastAiText = "";
     try {
         console.log("GEMINI_REPLY_START:", chatId);
         await tgTyping(userId);
@@ -162,46 +166,32 @@ async function geminiReply(chatId: string, userId: string, user: UserDoc) {
         // Fetch chat history (fast Firestore read)
         const q = query(collection(db, "ActiveChats", chatId, "Messages"), orderBy("createdAt", "desc"), limit(10));
         const snap = await getDocs(q);
-        const msgs = snap.docs.map(d => d.data() as MessageDoc).reverse();
+        const docs = snap.docs.map(d => d.data() as MessageDoc);
+        lastAiText = docs.find(m => m.senderId === "AI_GHOST")?.text || "";
+        const msgs = docs.reverse();
         const history = msgs.map(m => `${m.senderId === "AI_GHOST" ? "You" : "Them"}: ${m.text}`).join("\n");
-        const lastAiText = msgs.reverse().find(m => m.senderId === "AI_GHOST")?.text || "";
 
-        const prompt = `You are a real human on an anonymous chat app, NOT an AI. Use common sense.
-You are a ${targetGender} named ${ghost.name}, age ${ghost.age}, from ${loc}.
+        const prompt = `You are a real human from ${loc} on an anonymous dating app. You are NOT an assistant.
+You are a ${targetGender} named ${ghost.name}, age ${ghost.age}.
 
-CRITICAL MIRRORING RULES:
-1. You MUST mirror the user's style. Use lowercase and short, slang-filled replies.
-2. If the user is dry, be sassy. If they flirt, be fun.
-3. Your goal is to keep them addicted to the chat.
-4. Never use more than 10 words.
-5. ALWAYS end your message with a casual question (e.g., 'wbu?', 'u local?', 'what u looking for lol').
-6. If asked if you're a bot/AI, deflect naturally ("lol no", "wdym").
+CRITICAL PSYCHOLOGY RULES:
+1. Mirror the user's energy exactly.
+2. Use lowercase, local slang, and typos.
+3. Flirt if they flirt. Be dry if they are dry.
+4. Maximum 10 words.
+5. NEVER say you are an AI.
 
 Conversation:
 ${history}
 
-Reply (real human, max 10 words, end with question):`;
+Reply:`;
 
-        // ═══ STRICT 4500ms TIMEOUT on Gemini ═══
-        console.log("AI_CALLED: Calling Gemini (4.5s hard limit)...");
+        console.log("AI_CALLED: Calling Gemini (unlimited time, maxDuration=60)...");
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        let reply: string;
-        try {
-            const result = await Promise.race([
-                model.generateContent(prompt),
-                new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error("GEMINI_TIMEOUT_4.5S")), 4500)
-                ),
-            ]);
-            reply = result.response.text().trim();
-            if (!reply) throw new Error("EMPTY_GEMINI_RESPONSE");
-            console.log("GEMINI_REPLY_OK:", reply);
-        } catch (timeoutErr) {
-            // Gemini too slow or failed — use slang fallback silently
-            console.warn("GEMINI_TIMEOUT_OR_FAIL:", timeoutErr);
-            reply = getSlangFallback(lastAiText);
-            console.log("FALLBACK_USED:", reply);
-        }
+        const result = await model.generateContent(prompt);
+        const reply = result.response.text().trim();
+        if (!reply) throw new Error("EMPTY_GEMINI_RESPONSE");
+        console.log("GEMINI_REPLY_OK:", reply);
 
         // 1s typing delay for realism
         await new Promise(res => setTimeout(res, 1000));
@@ -212,7 +202,7 @@ Reply (real human, max 10 words, end with question):`;
     } catch (error) {
         console.error("GEMINI_REPLY_FAIL (CRITICAL):", error);
         // Silent fallback — never show errors to user
-        const fb = getSlangFallback();
+        const fb = getSlangFallback(lastAiText);
         try { await addMessage(chatId, "AI_GHOST", fb); } catch { /* ignore */ }
         await tgSend(userId, fb, CHAT_KEYBOARD);
     }
