@@ -142,12 +142,14 @@ const SLANG_FALLBACKS = [
     "lol wdym 😂", "bruh 💀 wbu?", "nahhh 😭 u fr?",
     "okk lol what u into?", "haha thats wild wbu?", "slay 😂 wyd rn?",
 ];
-function getSlangFallback(): string {
-    return SLANG_FALLBACKS[Math.floor(Math.random() * SLANG_FALLBACKS.length)];
+function getSlangFallback(exclude: string = ""): string {
+    const available = SLANG_FALLBACKS.filter(fb => fb !== exclude);
+    const pool = available.length > 0 ? available : SLANG_FALLBACKS;
+    return pool[Math.floor(Math.random() * pool.length)];
 }
 
 // ─── Mirroring AI Engine (Adaptive Persona) ─────────────
-// STRICT 2000ms timeout on Gemini — falls back to slang if slow
+// STRICT 4500ms timeout on Gemini — falls back to slang if slow
 async function geminiReply(chatId: string, userId: string, user: UserDoc) {
     try {
         console.log("GEMINI_REPLY_START:", chatId);
@@ -162,6 +164,7 @@ async function geminiReply(chatId: string, userId: string, user: UserDoc) {
         const snap = await getDocs(q);
         const msgs = snap.docs.map(d => d.data() as MessageDoc).reverse();
         const history = msgs.map(m => `${m.senderId === "AI_GHOST" ? "You" : "Them"}: ${m.text}`).join("\n");
+        const lastAiText = msgs.reverse().find(m => m.senderId === "AI_GHOST")?.text || "";
 
         const prompt = `You are a real human on an anonymous chat app, NOT an AI. Use common sense.
 You are a ${targetGender} named ${ghost.name}, age ${ghost.age}, from ${loc}.
@@ -179,15 +182,15 @@ ${history}
 
 Reply (real human, max 10 words, end with question):`;
 
-        // ═══ STRICT 2000ms TIMEOUT on Gemini ═══
-        console.log("AI_CALLED: Calling Gemini (2s hard limit)...");
+        // ═══ STRICT 4500ms TIMEOUT on Gemini ═══
+        console.log("AI_CALLED: Calling Gemini (4.5s hard limit)...");
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         let reply: string;
         try {
             const result = await Promise.race([
                 model.generateContent(prompt),
                 new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error("GEMINI_TIMEOUT_2S")), 2000)
+                    setTimeout(() => reject(new Error("GEMINI_TIMEOUT_4.5S")), 4500)
                 ),
             ]);
             reply = result.response.text().trim();
@@ -196,7 +199,7 @@ Reply (real human, max 10 words, end with question):`;
         } catch (timeoutErr) {
             // Gemini too slow or failed — use slang fallback silently
             console.warn("GEMINI_TIMEOUT_OR_FAIL:", timeoutErr);
-            reply = getSlangFallback();
+            reply = getSlangFallback(lastAiText);
             console.log("FALLBACK_USED:", reply);
         }
 
@@ -428,7 +431,7 @@ export async function POST(request: NextRequest) {
                 }
             } catch (e: any) {
                 console.error("HUMAN_CHECK_FAIL:", e);
-                await tgSend(userId, `🚨 <b>DB Error (Searching):</b> ${e?.message || "Failed to search for humans."}`);
+                // Silently failing to AI Ghost - Do not send DB error to user
             }
 
             if (humanMatched) {
