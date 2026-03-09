@@ -135,18 +135,29 @@ async function tgTyping(chatId: string | number) {
     } catch (_) { /* ignore */ }
 }
 
+// ─── SLANG FALLBACKS (used when Gemini times out or fails) ──
+const SLANG_FALLBACKS = [
+    "lol true 😂 wbu?", "thats crazy 😭 what else?", "fr fr 💀 u?",
+    "tell me more 👀", "no way haha wyd tho?", "wbu tho 👀",
+    "lol wdym 😂", "bruh 💀 wbu?", "nahhh 😭 u fr?",
+    "okk lol what u into?", "haha thats wild wbu?", "slay 😂 wyd rn?",
+];
+function getSlangFallback(): string {
+    return SLANG_FALLBACKS[Math.floor(Math.random() * SLANG_FALLBACKS.length)];
+}
+
 // ─── Mirroring AI Engine (Adaptive Persona) ─────────────
+// STRICT 2000ms timeout on Gemini — falls back to slang if slow
 async function geminiReply(chatId: string, userId: string, user: UserDoc) {
     try {
         console.log("GEMINI_REPLY_START:", chatId);
         await tgTyping(userId);
-        // EXACTLY 1 second latency bypass
-        await new Promise(res => setTimeout(res, 1000));
 
         const targetGender = user.preference === "Male" ? "Male" : "Female";
         const ghost = getGhostIdentity(user.location || "", targetGender);
         const loc = user.location || "somewhere cool";
 
+        // Fetch chat history (fast Firestore read)
         const q = query(collection(db, "ActiveChats", chatId, "Messages"), orderBy("createdAt", "desc"), limit(10));
         const snap = await getDocs(q);
         const msgs = snap.docs.map(d => d.data() as MessageDoc).reverse();
@@ -168,26 +179,38 @@ ${history}
 
 Reply (real human, max 10 words, end with question):`;
 
-        console.log("AI_CALLED: Calling Gemini API...");
+        // ═══ STRICT 2000ms TIMEOUT on Gemini ═══
+        console.log("AI_CALLED: Calling Gemini (2s hard limit)...");
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const result = await model.generateContent(prompt);
-        const reply = result.response.text().trim();
-        console.log("GEMINI_REPLY_OK:", reply);
+        let reply: string;
+        try {
+            const result = await Promise.race([
+                model.generateContent(prompt),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error("GEMINI_TIMEOUT_2S")), 2000)
+                ),
+            ]);
+            reply = result.response.text().trim();
+            if (!reply) throw new Error("EMPTY_GEMINI_RESPONSE");
+            console.log("GEMINI_REPLY_OK:", reply);
+        } catch (timeoutErr) {
+            // Gemini too slow or failed — use slang fallback silently
+            console.warn("GEMINI_TIMEOUT_OR_FAIL:", timeoutErr);
+            reply = getSlangFallback();
+            console.log("FALLBACK_USED:", reply);
+        }
+
+        // 1s typing delay for realism
+        await new Promise(res => setTimeout(res, 1000));
 
         await addMessage(chatId, "AI_GHOST", reply);
         await tgSend(userId, reply, CHAT_KEYBOARD);
         console.log("REPLY_SENT: AI message delivered to user via Telegram.");
-    } catch (error: any) {
+    } catch (error) {
         console.error("GEMINI_REPLY_FAIL (CRITICAL):", error);
-
-        // Detailed error reporting to the user
-        const errorMsg = `🚨 <b>AI Error:</b> ${error?.message || "Unknown Gemini API failure."}`;
-        await tgSend(userId, errorMsg, CHAT_KEYBOARD);
-
-        // Fallback message execution
-        const fallbacks = ["lol wdym 😂", "thats crazy 😭", "fr fr 💀", "tell me more 👀", "no way haha", "wbu tho 👀"];
-        const fb = fallbacks[Math.floor(Math.random() * fallbacks.length)];
-        try { await addMessage(chatId, "AI_GHOST", fb); } catch (_) { /* ignore */ }
+        // Silent fallback — never show errors to user
+        const fb = getSlangFallback();
+        try { await addMessage(chatId, "AI_GHOST", fb); } catch { /* ignore */ }
         await tgSend(userId, fb, CHAT_KEYBOARD);
     }
 }
@@ -361,15 +384,15 @@ export async function POST(request: NextRequest) {
         if (text === "🔍 Find Match" || text === "/next") {
             console.log("🔍 FIND_MATCH_START:", userId);
 
-            // 1. Close existing chat (fire-and-forget)
+            // 1. Close existing chat (awaited — Vercel kills after response)
             try {
                 const existing = await getChatByUser(userId);
                 if (existing) {
                     console.log("CLOSING_EXISTING:", existing.chatId);
-                    closeChat(existing.chatId).catch(console.error);
+                    await closeChat(existing.chatId);
                     const other = existing.user1 === userId ? existing.user2 : existing.user1;
                     if (other && other !== "AI_GHOST") {
-                        tgSend(other, "💨 The other person left.\n\nTap <b>🔍 Find Match</b> for someone new 🚀", MAIN_KEYBOARD).catch(console.error);
+                        await tgSend(other, "💨 The other person left.\n\nTap <b>🔍 Find Match</b> for someone new 🚀", MAIN_KEYBOARD);
                     }
                 }
             } catch (e) {
@@ -502,7 +525,7 @@ export async function POST(request: NextRequest) {
         if (msg) {
             const uId = msg.from?.id || msg.chat?.id;
             if (uId) {
-                tgSend(uId, `🚨 <b>Fatal System Error:</b> ${error?.message || "Webhook crashed."}`).catch(console.error);
+                await tgSend(uId, `🚨 <b>Fatal System Error:</b> ${error?.message || "Webhook crashed."}`);
             }
         }
 
