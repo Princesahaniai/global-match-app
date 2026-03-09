@@ -24,7 +24,7 @@ import { collection, query, orderBy, limit, getDocs, doc, getDoc } from "firebas
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const GEMINI_KEY = process.env.GEMINI_API_KEY!;
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
-const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+const genAI = new (GoogleGenerativeAI as any)(GEMINI_KEY, { apiVersion: "v1" });
 
 // ─── Social Proof ───────────────────────────────────────
 function getLiveUserCount(): string {
@@ -181,8 +181,8 @@ ${history}
 
 Reply:`;
 
-        console.log("AI_CALLED: Calling Stable Gemini 1.5 Flash (v1)...");
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        console.log("AI_CALLED: Calling Gemini 3.1 Flash Lite (v1 stable)...");
+        const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview" });
         const result = await model.generateContent(prompt);
         const reply = result.response.text().trim();
 
@@ -295,12 +295,12 @@ export async function POST(request: NextRequest) {
                 dbStatus = `❌ ${e?.message || "Firebase connection failed"}`;
             }
 
-            // 2. Gemini check (Stable v1 Engine)
+            // 2. Gemini check (Stable v1 Production Engine)
             try {
-                const testModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const testModel = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview" });
                 const testResult = await testModel.generateContent("Say OK");
                 const testReply = testResult.response.text().trim();
-                aiStatus = testReply ? `✅ OK (Stable v1 Mode: ${testReply.substring(0, 30)})` : "❌ Empty response";
+                aiStatus = testReply ? `✅ OK (Stable v1 Production Engine: ${testReply.substring(0, 30)})` : "❌ Empty response";
             } catch (e: any) {
                 aiStatus = `❌ ${e?.message || "Gemini API failed"}`;
             }
