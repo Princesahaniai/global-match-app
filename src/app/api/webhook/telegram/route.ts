@@ -171,23 +171,18 @@ async function geminiReply(chatId: string, userId: string, user: UserDoc) {
         const msgs = docs.reverse();
         const history = msgs.map(m => `${m.senderId === "AI_GHOST" ? "You" : "Them"}: ${m.text}`).join("\n");
 
-        const prompt = `You are a real human from ${loc} on an anonymous dating app. You are NOT an assistant.
-You are a ${targetGender} named ${ghost.name}, age ${ghost.age}.
+        const prompt = `Human from ${loc} on a dating app. You: ${targetGender}, age ${ghost.age}.
+Mirror them exactly (lowercase, slang, typos).
+Flirt if they flirt. Be dry if they are dry.
+Max 10 words. Never mention AI.
 
-CRITICAL PSYCHOLOGY RULES:
-1. Mirror the user's energy exactly.
-2. Use lowercase, local slang, and typos.
-3. Flirt if they flirt. Be dry if they are dry.
-4. Maximum 10 words.
-5. NEVER say you are an AI.
-
-Conversation:
+Chat:
 ${history}
 
 Reply:`;
 
-        console.log("AI_CALLED: Calling Gemini (unlimited time, maxDuration=60)...");
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        console.log("AI_CALLED: Calling Gemini 1.5 Flash (optimized)...");
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
         const result = await model.generateContent(prompt);
         const reply = result.response.text().trim();
 
@@ -302,7 +297,7 @@ export async function POST(request: NextRequest) {
 
             // 2. Gemini check
             try {
-                const testModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                const testModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
                 const testResult = await testModel.generateContent("Say OK");
                 const testReply = testResult.response.text().trim();
                 aiStatus = testReply ? `✅ OK (replied: ${testReply.substring(0, 30)})` : "❌ Empty response";
