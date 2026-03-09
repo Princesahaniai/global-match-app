@@ -187,17 +187,9 @@ ${history}
 Reply:`;
 
         console.log("AI_CALLED: Calling Gemini (unlimited time, maxDuration=60)...");
-        let reply = "";
-        try {
-            const modelFlash = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-            const result = await modelFlash.generateContent(prompt);
-            reply = result.response.text().trim();
-        } catch (flashErr: any) {
-            console.log("GEMINI FLASH FAILED, fallback to gemini-pro:", flashErr?.message);
-            const modelPro = genAI.getGenerativeModel({ model: "gemini-pro" });
-            const result = await modelPro.generateContent(prompt);
-            reply = result.response.text().trim();
-        }
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const result = await model.generateContent(prompt);
+        const reply = result.response.text().trim();
 
         if (!reply) throw new Error("EMPTY_GEMINI_RESPONSE");
         console.log("GEMINI_REPLY_OK:", reply);
@@ -310,17 +302,9 @@ export async function POST(request: NextRequest) {
 
             // 2. Gemini check
             try {
-                let testReply = "";
-                try {
-                    const testModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-                    const testResult = await testModel.generateContent("Say OK");
-                    testReply = testResult.response.text().trim();
-                } catch (flashErr: any) {
-                    console.log("Debug Gemini Flash failed, falling back to gemini-pro", flashErr?.message);
-                    const testModel = genAI.getGenerativeModel({ model: "gemini-pro" });
-                    const testResult = await testModel.generateContent("Say OK");
-                    testReply = testResult.response.text().trim();
-                }
+                const testModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const testResult = await testModel.generateContent("Say OK");
+                const testReply = testResult.response.text().trim();
                 aiStatus = testReply ? `✅ OK (replied: ${testReply.substring(0, 30)})` : "❌ Empty response";
             } catch (e: any) {
                 aiStatus = `❌ ${e?.message || "Gemini API failed"}`;
